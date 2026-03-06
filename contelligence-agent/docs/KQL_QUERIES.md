@@ -1,4 +1,4 @@
-# HikmaForge KQL Queries & Alert Definitions
+# Contelligence KQL Queries & Alert Definitions
 
 Reusable KQL queries for Application Insights monitoring and Azure Monitor alert rules.
 
@@ -8,7 +8,7 @@ Reusable KQL queries for Application Insights monitoring and Azure Monitor alert
 
 ```kql
 customMetrics
-| where name == "hikmaforge.tool_calls"
+| where name == "contelligence.tool_calls"
 | where timestamp > ago(5m)
 | extend tool = tostring(customDimensions.tool),
          status = tostring(customDimensions.status)
@@ -29,11 +29,11 @@ customMetrics
 
 ```kql
 customMetrics
-| where name in ("hikmaforge.cache.hits", "hikmaforge.cache.misses")
+| where name in ("contelligence.cache.hits", "contelligence.cache.misses")
 | where timestamp > ago(1h)
 | summarize
-    hits  = countif(name == "hikmaforge.cache.hits"),
-    misses = countif(name == "hikmaforge.cache.misses")
+    hits  = countif(name == "contelligence.cache.hits"),
+    misses = countif(name == "contelligence.cache.misses")
     by bin(timestamp, 5m)
 | extend hit_ratio = iff(hits + misses > 0,
                           todouble(hits) / todouble(hits + misses) * 100, 0.0)
@@ -47,7 +47,7 @@ customMetrics
 
 ```kql
 customMetrics
-| where name == "hikmaforge.rate_limit.wait_duration"
+| where name == "contelligence.rate_limit.wait_duration"
 | where timestamp > ago(1h)
 | summarize
     p50 = percentile(value, 50),
@@ -65,7 +65,7 @@ customMetrics
 
 ```kql
 customMetrics
-| where name == "hikmaforge.session.duration"
+| where name == "contelligence.session.duration"
 | where timestamp > ago(24h)
 | summarize
     count_sessions = count(),
@@ -82,7 +82,7 @@ customMetrics
 
 ```kql
 customMetrics
-| where name == "hikmaforge.tool_call.duration"
+| where name == "contelligence.tool_call.duration"
 | where timestamp > ago(6h)
 | extend tool = tostring(customDimensions.tool)
 | summarize
@@ -99,7 +99,7 @@ customMetrics
 
 ```kql
 customMetrics
-| where name == "hikmaforge.errors"
+| where name == "contelligence.errors"
 | where timestamp > ago(24h)
 | extend error_type = tostring(customDimensions.type)
 | summarize count() by error_type, bin(timestamp, 1h)
@@ -114,7 +114,7 @@ customMetrics
 
 ```kql
 customMetrics
-| where name == "hikmaforge.sessions.created"
+| where name == "contelligence.sessions.created"
 | where timestamp > ago(1h)
 | extend instance = tostring(customDimensions["cloud.roleInstance"])
 | summarize sessions = count() by instance, bin(timestamp, 5m)
@@ -127,7 +127,7 @@ customMetrics
 
 ```kql
 customMetrics
-| where name == "hikmaforge.documents.processed"
+| where name == "contelligence.documents.processed"
 | where timestamp > ago(24h)
 | summarize docs = sum(value) by bin(timestamp, 1h)
 | order by timestamp desc
@@ -164,8 +164,8 @@ exceptions
 
 | Alert Name            | Signal                              | Condition                  | Frequency | Window |
 |----------------------|---------------------------------------|---------------------------|-----------|--------|
-| HighToolErrorRate    | `hikmaforge.tool_calls` error_rate   | > 10 %                    | 1 min     | 5 min  |
-| HighP95RateWait      | `hikmaforge.rate_limit.wait_duration` p95 | > 5 000 ms           | 5 min     | 10 min |
-| ErrorBurst           | `hikmaforge.errors` count            | > 50                      | 1 min     | 5 min  |
-| LongRunningSession   | `hikmaforge.session.duration` p95    | > 3 600 s                 | 15 min    | 30 min |
-| LowCacheHitRatio     | hikmaforge.cache hit_ratio           | < 20 %                    | 5 min     | 15 min |
+| HighToolErrorRate    | `contelligence.tool_calls` error_rate   | > 10 %                    | 1 min     | 5 min  |
+| HighP95RateWait      | `contelligence.rate_limit.wait_duration` p95 | > 5 000 ms           | 5 min     | 10 min |
+| ErrorBurst           | `contelligence.errors` count            | > 50                      | 1 min     | 5 min  |
+| LongRunningSession   | `contelligence.session.duration` p95    | > 3 600 s                 | 15 min    | 30 min |
+| LowCacheHitRatio     | contelligence.cache hit_ratio           | < 20 %                    | 5 min     | 15 min |

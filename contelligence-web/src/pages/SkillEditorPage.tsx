@@ -455,7 +455,7 @@ export default function SkillEditorPage() {
               <Input
                 value={form.compatibility}
                 onChange={(e) => updateField("compatibility", e.target.value)}
-                placeholder="e.g. HikmaForge v1.0+, doc-processor"
+                placeholder="e.g. Contelligence v1.0+, doc-processor"
                 disabled={isReadOnly}
               />
               <p className="text-xs text-muted-foreground mt-1">

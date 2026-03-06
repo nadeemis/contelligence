@@ -3,7 +3,7 @@
 ## Overview
 
 The Azure MCP Server provides a unified interface to 42+ Azure services.
-HikmaForge supports two deployment modes:
+Contelligence supports two deployment modes:
 
 | Mode | Transport | Best for |
 |------|-----------|----------|
@@ -132,7 +132,7 @@ The MCP server reads this automatically — no additional SDK setup.
 AZURE_MCP_COLLECT_TELEMETRY_MICROSOFT=false
 ```
 
-This is the default in HikmaForge. Set to `true` only if you want to
+This is the default in Contelligence. Set to `true` only if you want to
 participate in Microsoft's telemetry programme.
 
 ### Viewing MCP Traces

@@ -1,4 +1,4 @@
-"""Telemetry configuration for the HikmaForge agent and MCP servers.
+"""Telemetry configuration for the Contelligence agent and MCP servers.
 
 The Azure MCP Server reads ``APPLICATIONINSIGHTS_CONNECTION_STRING``
 directly from the environment — no additional SDK setup is required.

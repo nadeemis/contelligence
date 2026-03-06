@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 
 class Role(str, Enum):
-    """Built-in roles for the HikmaForge agent."""
+    """Built-in roles for the Contelligence agent."""
 
     ADMIN = "admin"
     OPERATOR = "operator"

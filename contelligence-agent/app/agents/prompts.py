@@ -1,4 +1,4 @@
-"""System prompts for the three custom HikmaForge agents.
+"""System prompts for the three custom Contelligence agents.
 
 Each prompt is a Python string constant that fully specifies the agent's
 persona, expertise, tool-use guidance, edge-case handling, and output

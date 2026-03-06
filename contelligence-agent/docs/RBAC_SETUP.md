@@ -120,7 +120,7 @@ The Container App must have **system-assigned managed identity** enabled:
 
 ```bash
 az containerapp identity assign \
-  --name hikmaforge-agent \
+  --name contelligence-agent \
   --resource-group <rg> \
   --system-assigned
 ```

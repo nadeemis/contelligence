@@ -1,4 +1,4 @@
-"""Authentication & RBAC package for HikmaForge."""
+"""Authentication & RBAC package for Contelligence."""
 
 from .helpers import reset_openid_cache, validate_token
 from .middleware import get_current_user, get_optional_user, require_role
