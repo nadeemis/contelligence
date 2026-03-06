@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Invoice",
+  "description": "Structured output schema for extracted invoice data",
+  "type": "object",
+  "required": ["invoice_number", "invoice_date", "vendor_name", "total_amount", "currency"],
+  "properties": {
+    "invoice_number": {
+      "type": "string",
+      "description": "Unique invoice identifier"
+    },
+    "invoice_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Invoice issue date in ISO 8601 format (YYYY-MM-DD)"
+    },
+    "due_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Payment due date in ISO 8601 format"
+    },
+    "vendor_name": {
+      "type": "string",
+      "description": "Name of the invoice issuer / vendor"
+    },
+    "vendor_address": {
+      "type": ["string", "null"],
+      "description": "Full address of the vendor"
+    },
+    "buyer_name": {
+      "type": ["string", "null"],
+      "description": "Name of the buyer / bill-to entity"
+    },
+    "buyer_address": {
+      "type": ["string", "null"],
+      "description": "Full address of the buyer"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code (e.g., USD, EUR, GBP)"
+    },
+    "subtotal": {
+      "type": ["number", "null"],
+      "description": "Sum of line items before tax"
+    },
+    "tax_amount": {
+      "type": ["number", "null"],
+      "description": "Total tax amount"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total invoice amount (subtotal + tax)"
+    },
+    "payment_terms": {
+      "type": ["string", "null"],
+      "description": "Payment terms (e.g., Net 30, Due on Receipt)"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": ["invoice", "credit_note", "proforma", "purchase_order"],
+      "default": "invoice",
+      "description": "Type of the billing document"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description", "line_total"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Line item description"
+          },
+          "quantity": {
+            "type": ["number", "null"],
+            "description": "Quantity of items"
+          },
+          "unit_price": {
+            "type": ["number", "null"],
+            "description": "Price per unit"
+          },
+          "line_total": {
+            "type": "number",
+            "description": "Total for this line item"
+          }
+        }
+      },
+      "description": "Individual line items on the invoice"
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Review flags (e.g., 'missing_invoice_number', 'multi_currency')"
+    },
+    "source_file": {
+      "type": ["string", "null"],
+      "description": "Original filename the invoice was extracted from"
+    },
+    "extraction_confidence": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Overall confidence score of the extraction (0-1)"
+    }
+  }
+}

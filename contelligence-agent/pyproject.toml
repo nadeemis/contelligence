@@ -1,0 +1,12 @@
+[project]
+name = "contelligence-agent"
+version = "1.0.0"
+description = "Contelligence Agent — Intelligent content processing."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

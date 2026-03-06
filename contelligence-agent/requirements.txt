@@ -1,0 +1,37 @@
+github-copilot-sdk
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+sse-starlette>=2.0.0
+pydantic>=2.12.0
+pydantic-settings>=2.7.0
+azure-identity>=1.25.0
+azure-cosmos>=4.9.0
+azure-storage-blob>=12.27.0
+azure-search-documents>=11.6.0
+azure-ai-documentintelligence>=1.0.0
+azure-keyvault-secrets>=4.9.0
+openai>=1.60.0
+httpx>=0.28.1
+aiohttp>=3.13.3
+python-dotenv>=1.0.0
+pymupdf>=1.26.0
+python-docx>=1.2.0
+openpyxl>=3.1.0
+python-pptx>=1.0.0
+playwright>=1.50.0
+# Azure MCP Server (unified — 42+ Azure services)
+msmcp-azure>=1.0.0
+# Observability
+azure-monitor-opentelemetry>=1.6.0
+opentelemetry-api>=1.39.0
+opentelemetry-sdk>=1.39.0
+opentelemetry-instrumentation-fastapi>=0.60b0
+opentelemetry-instrumentation-httpx>=0.60b0
+opentelemetry-instrumentation-logging>=0.60b0
+# RBAC
+python-jose[cryptography]>=3.5.0
+# Scheduling Engine
+apscheduler>=3.11.2
+croniter>=6.0.0
+pytz>=2025.2
+python-multipart>=0.0.22

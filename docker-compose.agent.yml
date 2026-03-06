@@ -1,0 +1,28 @@
+services:
+  contelligence-agent:
+    build:
+      context: .
+      dockerfile: contelligence-agent/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - contelligence-agent/.env
+    volumes:
+      - ./contelligence-agent:/app
+    environment:
+      - LOG_LEVEL=DEBUG
+      - AZURE_MCP_SERVER_URL=http://azure-mcp:5008
+    depends_on:
+      azure-mcp:
+        condition: service_started
+
+  azure-mcp:
+    image: mcr.microsoft.com/azure-sdk/azure-mcp:latest
+    command: ["azmcp", "server", "start", "--transport", "http", "--port", "5008"]
+    ports:
+      - "5008:5008"
+    environment:
+      - AZURE_MCP_COLLECT_TELEMETRY_MICROSOFT=false
+    volumes:
+      # Share Azure CLI credentials for local development
+      - ${HOME}/.azure:/root/.azure:ro
