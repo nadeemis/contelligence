@@ -29,10 +29,24 @@ const Chat = () => {
   const [userMessages, setUserMessages] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState("gpt-4o");
+  const [selectedModel, setSelectedModel] = useState("");
   const { events, isStreaming, sessionTitle, connect, reset } = useAgentStream();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+
+  // ── Fetch available models from backend ──
+  const { data: availableModels = [] } = useQuery({
+    queryKey: ["models"],
+    queryFn: () => agentApi.listModels(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Select first model as default once loaded
+  useEffect(() => {
+    if (!selectedModel && availableModels.length > 0) {
+      setSelectedModel(availableModels[0].id);
+    }
+  }, [availableModels, selectedModel]);
 
   // Re-enable auto-scroll when a new streaming session starts
   useEffect(() => {
@@ -254,21 +268,14 @@ const Chat = () => {
             <span className="text-xs text-muted-foreground">Model:</span>
             <Select value={selectedModel} onValueChange={setSelectedModel}>
               <SelectTrigger className="h-7 w-[180px] text-xs">
-                <SelectValue />
+                <SelectValue placeholder="Select model…" />
               </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="claude-haiko-4.5">Claude Haiko 4.5</SelectItem>
-              <SelectItem value="claude-opus-4.5">Claude Opus 4.5</SelectItem>
-              <SelectItem value="claude-opus-4.6">Claude Opus 4.6</SelectItem>
-              <SelectItem value="claude-sonnet-4.5">Claude Sonnet 4.5</SelectItem>
-              <SelectItem value="claude-sonnet-4.6">Claude Sonnet 4.6</SelectItem>
-              <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro (Preview)</SelectItem>
-              <SelectItem value="claude-opus-4.6-fast">Claude Opus 4.6 (fast mode)</SelectItem>
-              <SelectItem value="gpt-5-mini">GPT 5 Mini</SelectItem>
-              <SelectItem value="gpt-5.1">GPT 5.1</SelectItem>
-              <SelectItem value="gpt-5.2">GPT 5.2</SelectItem>
-            </SelectContent>
-          </Select>
+              <SelectContent>
+                {availableModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button
             size="sm"

@@ -17,6 +17,7 @@ from app.dependencies import (
     get_agent_service,
     get_approval_manager,
     get_blob_connector,
+    get_client_factory,
     get_cosmos_connector,
     get_session_store,
 )
@@ -410,6 +411,27 @@ async def download_output(
         logger.exception(
             "Error downloading output %s for session %s", output_id, session_id,
         )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# GET /models -- list available models
+# ---------------------------------------------------------------------------
+
+
+@router.get("/models")
+async def list_models(
+    client_factory=Depends(get_client_factory),
+) -> dict[str, Any]:
+    """Return the available models from the Copilot CLI."""
+    try:
+        client = client_factory.client
+        models = await client.list_models()
+        return {
+            "models": [m.to_dict() for m in models],
+        }
+    except Exception as exc:
+        logger.exception("Error listing models")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

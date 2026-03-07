@@ -98,6 +98,12 @@ def get_tool_registry(request: Request):
     return request.app.state.tool_registry
 
 
+def get_client_factory(request: Request):
+    """Provide the ``CopilotClientFactory`` singleton."""
+    from app.core.client_factory import CopilotClientFactory
+    return request.app.state.client_factory
+
+
 # Scheduling Engine dependencies
 
 def get_schedule_store(request: Request):
