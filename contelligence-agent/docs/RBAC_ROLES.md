@@ -1,6 +1,6 @@
-# HikmaForge RBAC Roles
+# Contelligence RBAC Roles
 
-This document describes the Azure AD app roles used by the HikmaForge agent API.
+This document describes the Azure AD app roles used by the Contelligence agent API.
 
 ## Role Definitions
 

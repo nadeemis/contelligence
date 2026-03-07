@@ -32,7 +32,7 @@ class AppSettings(BaseSettings):
     AZURE_OPENAI_API_VERSION: str = "2024-10-21"
 
     # GitHub Copilot SDK
-    GITHUB_COPILOT_TOKEN: str = ""
+    GITHUB_COPILOT_TOKEN: str | None = None  # GitHub Personal Access Token with 'copilot' scope (can also be set via the web UI for easier token rotation)
     COPILOT_CLI_PATH: str = "copilot"
     COPILOT_CLI_URL: str = ""
     COPILOT_MODEL: str = "claude-opus-4.6"

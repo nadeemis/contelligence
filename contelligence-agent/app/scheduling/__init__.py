@@ -1,4 +1,4 @@
-"""Scheduling utilities for the HikmaForge agent."""
+"""Scheduling utilities for the Contelligence agent."""
 
 from .leader_election import SchedulerLeaderElection
 

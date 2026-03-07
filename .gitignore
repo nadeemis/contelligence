@@ -208,3 +208,6 @@ __marimo__/
 
 
 gitignore*
+# Copilot CLI session state (docker volume bind mount)
+.copilot-session-state/*
+!.copilot-session-state/.gitkeep

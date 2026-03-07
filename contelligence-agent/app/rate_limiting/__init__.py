@@ -1,4 +1,4 @@
-"""Rate limiting and quota management for the HikmaForge agent."""
+"""Rate limiting and quota management for the Contelligence agent."""
 
 from .models import RateLimit
 from .rate_limiter import RateLimiter, configure_default_rate_limits, rate_limiter

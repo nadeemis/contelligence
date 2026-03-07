@@ -1,4 +1,4 @@
-"""MCP server configuration for HikmaForge.
+"""MCP server configuration for Contelligence.
 
 Defines connection settings for:
 - **Azure MCP Server** (unified — 42+ Azure services via stdio or HTTP)

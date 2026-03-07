@@ -1,1 +1,1 @@
-"""Utility modules for the HikmaForge agent."""
+"""Utility modules for the Contelligence agent."""

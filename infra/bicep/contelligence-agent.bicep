@@ -80,6 +80,11 @@ param sessionRetentionDays int = 365
 @description('Cache TTL in days.')
 param cacheTtlDays int = 30
 
+// --- Copilot CLI ---
+
+@description('Internal URL of the Copilot CLI headless server (host:port).')
+param copilotCliUrl string = ''
+
 // =========================================================================
 // Container App
 // =========================================================================
@@ -158,6 +163,11 @@ resource agentApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'CACHE_TTL_DAYS'
               value: string(cacheTtlDays)
+            }
+            // --- Copilot CLI ---
+            {
+              name: 'CLI_URL'
+              value: copilotCliUrl
             }
           ]
         }

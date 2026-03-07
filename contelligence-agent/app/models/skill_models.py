@@ -55,7 +55,7 @@ class SkillRecord(BaseModel):
     license: str | None = Field(default=None, description="SPDX license identifier")
     compatibility: str | None = Field(
         default=None,
-        description="Compatibility string (e.g., 'HikmaForge v1.0+')",
+        description="Compatibility string (e.g., 'Contelligence v1.0+')",
     )
     metadata: dict[str, str] = Field(
         default_factory=dict,

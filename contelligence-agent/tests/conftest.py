@@ -486,7 +486,7 @@ def mock_vector_search_results() -> list[dict[str, Any]]:
         {
             "id": "chunk-001",
             "title": "Architecture Overview",
-            "content": "HikmaForge uses event-driven microservices...",
+            "content": "Contelligence uses event-driven microservices...",
             "@search.score": 0.96,
             "@search.reranker_score": 3.85,
         },

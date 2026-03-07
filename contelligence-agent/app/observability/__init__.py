@@ -1,4 +1,4 @@
-"""Observability package for the HikmaForge agent.
+"""Observability package for the Contelligence agent.
 
 Provides Application Insights integration via OpenTelemetry, custom
 metrics, distributed tracing decorators, and structured logging.

@@ -1,4 +1,4 @@
-"""Custom OpenTelemetry metrics for the HikmaForge agent.
+"""Custom OpenTelemetry metrics for the Contelligence agent.
 
 All metrics are registered under the ``contelligence.agent`` meter and
 use descriptive names under the ``contelligence.`` namespace so they are

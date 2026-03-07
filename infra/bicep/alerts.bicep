@@ -1,7 +1,7 @@
 // ============================================================================
-// HikmaForge Alerts — Azure Monitor Metric Alerts
+// Contelligence Alerts — Azure Monitor Metric Alerts
 // ============================================================================
-// Configures alerts for the HikmaForge agent based on Application Insights
+// Configures alerts for the Contelligence agent based on Application Insights
 // custom metrics.  Requires the Application Insights resource ID as input.
 //
 // Usage:
