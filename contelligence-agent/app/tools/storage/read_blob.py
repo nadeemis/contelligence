@@ -25,8 +25,12 @@ class ReadBlobParams(BaseModel):
             "(authentication uses DefaultAzureCredential)."
         ),
     )
-    container: str = Field(
-        description="Name of the Azure Blob Storage container."
+    container: str | None = Field(
+        default=None,
+        description=(
+            "Name of the Azure Blob Storage container. If not present, the tool will attempt to list containers "
+            "(if action='list' and storage_account is specified) or return an error (for other actions)."
+        )
     )
     action: Literal["list", "read", "metadata"] = Field(
         description=(
@@ -52,9 +56,9 @@ class ReadBlobParams(BaseModel):
 @define_tool(
     name="read_blob",
     description=(
-        "Read from Azure Blob Storage. Use action='list' to list blobs in a "
-        "container (with optional prefix filter), action='read' to download "
-        "file content as text, or action='metadata' to get blob properties. "
+        "Read from Azure Blob Storage. Use action='list' to list containers "
+        "in a storage account or blobs in a container (with optional prefix filter), "
+        "action='read' to download file content as text, or action='metadata' to get blob properties. "
         "Use 'list' to discover what files exist before processing them."
     ),
     parameters_model=ReadBlobParams,
@@ -92,6 +96,18 @@ async def read_blob(params: ReadBlobParams, context: dict) -> dict:
 async def _execute(params: ReadBlobParams, connector: BlobConnectorAdapter) -> dict:
     """Run the requested blob action against *connector*."""
     if params.action == "list":
+        # If no container is specified, list containers instead of blobs
+        if not params.container:
+            containers = await connector.list_containers()
+            logger.debug(
+                "read_blob list containers returned %d containers",
+                len(containers),
+            )
+            return {
+                "count": len(containers),
+                "containers": [c.name for c in containers],
+            }
+        
         blobs = await connector.list_blobs(
             container=params.container,
             prefix=params.prefix,

@@ -21,18 +21,15 @@ export function ChatSkillPicker({
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
 
-  const { data: skills = [], isLoading } = useQuery({
-    queryKey: ["skills-active"],
-    queryFn: () => skillsApi.list({ status: "active" }),
+  const { data: allSkills = [], isLoading } = useQuery({
+    queryKey: ["skills-available"],
+    queryFn: async () => {
+      const all = await skillsApi.list();
+      return all.filter(
+        (s) => s.status === "active" || s.source === "built-in",
+      );
+    },
   });
-
-  // Also include built-in skills
-  const { data: builtInSkills = [] } = useQuery({
-    queryKey: ["skills-builtin"],
-    queryFn: () => skillsApi.list({ status: "built-in" }),
-  });
-
-  const allSkills = [...builtInSkills, ...skills];
 
   const toggle = (name: string) => {
     onSelectionChange(

@@ -1,8 +1,27 @@
-# Contelligence
+<!-- <p align="center">
+    <h1 align="left" style="font-size:6em;">
+    <picture>
+    <img src="./assets/Contelligence-logo.png" alt="Contelligence Logo" />
+    </picture>
+    Contelligence
+    </h1>
+</p> -->
+
+|  |  |
+|--------|---------------------|
+| <picture><img src="./assets/Contelligence-logo.png" alt="Contelligence Logo" /></picture> | <h1 align="left" style="font-size:6em;">Contelligence</h1> |
 
 **AI-native, agentic content intelligence platform powered by GitHub Copilot SDK.**
 
 Contelligence replaces brittle, hard-coded content processing pipelines with an autonomous AI agent that reasons step-by-step, ingests any content — documents, spreadsheets, presentations, web pages, audio, images — understands data by meaning, and delivers structured intelligence. All orchestrated through natural language.
+
+---
+
+[![Azure](https://img.shields.io/badge/Azure-Powered-0078D4?logo=microsoft-azure)](https://azure.microsoft.com)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776ab?logo=python)](https://www.python.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178c6?logo=typescript)](https://www.typescriptlang.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Modern_API-009485)](https://fastapi.tiangolo.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -69,38 +88,14 @@ Users describe their needs in **plain English**. The Copilot agent reasons about
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  contelligence-web  (React + TypeScript + Tailwind)     │
-│  Dashboard · Chat · Sessions · Agents · Skills          │
-│  Schedules · Outputs · Metrics · Settings               │
-└───────────────────────┬─────────────────────────────────┘
-                        │  REST + SSE
-┌───────────────────────▼─────────────────────────────────┐
-│  contelligence-agent  (FastAPI + GitHub Copilot SDK)    │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │ Agentic Core                                    │    │
-│  │ Copilot SDK Runtime · Tool Registry (20 tools)  │    │
-│  │ Custom Agents · Agent Delegation · Skills Engine │    │
-│  ├─────────────────────────────────────────────────┤    │
-│  │ Services                                        │    │
-│  │ Persistent Sessions · Scheduling · Approvals    │    │
-│  │ Context Collector · Extraction Cache             │    │
-│  ├─────────────────────────────────────────────────┤    │
-│  │ Cross-Cutting                                   │    │
-│  │ Auth (JWT/Entra ID) · Rate Limiting · RBAC      │    │
-│  │ OpenTelemetry Observability                     │    │
-│  └─────────────────────────────────────────────────┘    │
-└───────────────────────┬─────────────────────────────────┘
-                        │  Native SDKs + MCP
-┌───────────────────────▼─────────────────────────────────┐
-│  Azure Services                                         │
-│  Cosmos DB · Blob Storage · AI Search                   │
-│  Document Intelligence · OpenAI · Key Vault             │
-│  Application Insights · Speech · Container Apps         │
-│  Azure MCP Server (42+ additional services)             │
-└─────────────────────────────────────────────────────────┘
-```
+![Architecture Diagram](assets/Contelligence-deployment-architecture.jpg)
+
+## Solution Components
+![Solution Components](assets/Contelligence-solution-components.jpeg)
+
+### Frontend — `contelligence-web`
+
+React 18 SPA built with Vite, TypeScript, Tailwind CSS, and shadcn/ui. Ships with a chat-first UX supporting real-time SSE streaming, tool call visualization, approval workflows, and a full dashboard with session analytics, schedule management, and agent/skill authoring.
 
 ### Backend — `contelligence-agent`
 
@@ -112,22 +107,6 @@ FastAPI application with the GitHub Copilot SDK as the orchestration runtime. Ke
 - **Scheduling engine** — APScheduler + Cosmos DB distributed locking. Supports cron, interval, Event Grid, and webhook triggers.
 - **Human-in-the-loop approvals** — Destructive operations (writes, deletes, upserts) can trigger approval gates with configurable timeouts.
 - **Session persistence** — Full conversation history, tool call logs, output artifacts, and metrics stored in Cosmos DB for audit and replay.
-
-### Frontend — `contelligence-web`
-
-React 18 SPA built with Vite, TypeScript, Tailwind CSS, and shadcn/ui. Ships with a chat-first UX supporting real-time SSE streaming, tool call visualization, approval workflows, and a full dashboard with session analytics, schedule management, and agent/skill authoring.
-
-### Infrastructure
-
-All Azure resources are defined as Bicep templates under `infra/bicep/`:
-
-| Template | Resources |
-|----------|-----------|
-| `contelligence-agent.bicep` | Container App (2 CPU / 4 GiB, 1–10 replicas, sticky sessions) |
-| `contelligence-cosmos.bicep` | Cosmos DB NoSQL account with 10 containers (sessions, conversation, outputs, agents, skills, schedules, schedule-runs, extraction-cache, scheduler-locks, approval-requests) |
-| `contelligence-storage.bicep` | Blob Storage with lifecycle management (Hot → Cool @ 90d → Archive @ 365d → Delete @ 730d) |
-| `monitoring.bicep` | Application Insights |
-| `alerts.bicep` | Alert rules |
 
 ---
 
@@ -525,6 +504,28 @@ contelligence/
 
 ---
 
-## License
+## 🤝 Contributing
 
-See [LICENSE](LICENSE) for details.
+We welcome contributions! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🚀 Getting Help
+
+- **Issues**: Report bugs and request features on [GitHub Issues](../../issues)
+- **Discussions**: Ask questions and share ideas in [Discussions](../../discussions)
+- **Documentation**: Check our comprehensive [docs](docs/README.md)
+
+---
