@@ -1,15 +1,13 @@
 // =============================================================================
-// keyvault.bicep — Azure Key Vault for Contelligence secrets
+// keyvault.bicep — Azure Key Vault for Contelligence secrets (AVM)
 // =============================================================================
+// Wraps AVM br/public:avm/res/key-vault/vault:0.13.3
 
 @description('Name of the Key Vault')
 param keyVaultName string
 
 @description('Azure region for the Key Vault')
 param location string = resourceGroup().location
-
-@description('Principal ID to grant Key Vault Secrets User role')
-param secretsUserPrincipalId string = ''
 
 @description('Enable RBAC authorization (recommended over access policies)')
 param enableRbacAuthorization bool = true
@@ -18,19 +16,16 @@ param enableRbacAuthorization bool = true
 param tags object = {}
 
 // ---------------------------------------------------------------------------
-// Key Vault resource
+// Key Vault (AVM)
 // ---------------------------------------------------------------------------
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: keyVaultName
-  location: location
-  tags: tags
-  properties: {
-    sku: {
-      family: 'A'
-      name: 'standard'
-    }
-    tenantId: subscription().tenantId
+module keyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
+  name: '${keyVaultName}-deploy'
+  params: {
+    name: keyVaultName
+    location: location
+    tags: tags
+    sku: 'standard'
     enableRbacAuthorization: enableRbacAuthorization
     enableSoftDelete: true
     softDeleteRetentionInDays: 90
@@ -39,18 +34,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 // ---------------------------------------------------------------------------
-// Secret placeholder — GitHub PAT
-// ---------------------------------------------------------------------------
-// The actual PAT value is set via CLI:
-//   az keyvault secret set --vault-name <name> --name "github-copilot-token" --value <pat>
-//
-// This is documented here for reference. Secrets with sensitive values should
-// never be embedded in Bicep templates.
-
-// ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
-output keyVaultId string = keyVault.id
-output keyVaultUri string = keyVault.properties.vaultUri
-output keyVaultName string = keyVault.name
+output keyVaultId string = keyVault.outputs.resourceId
+output keyVaultUri string = keyVault.outputs.uri
+output keyVaultName string = keyVault.outputs.name

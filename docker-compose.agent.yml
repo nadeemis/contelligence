@@ -1,7 +1,7 @@
 services:
   copilot-cli:
     build:
-      context: ./copilot-cli
+      context: ./infar/copilot-cli
       dockerfile: Dockerfile
     ports:
       - "4321:4321"

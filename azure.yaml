@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: contelligence
+metadata:
+  template: contelligence@1.0.0
+services:
+  copilot-cli:
+    project: ./infra/copilot-cli
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+  agent:
+    project: ./contelligence-agent
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+  web:
+    project: ./contelligence-web
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile

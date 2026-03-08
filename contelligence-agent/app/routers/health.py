@@ -7,7 +7,7 @@ from app.utils.instance import get_instance_id
 router = APIRouter(prefix="/health", tags=["Health"])
 
 
-@router.get("/api/health")
+@router.get("")
 async def health_check(request: Request):
     """Health check with optional MCP server status."""
     mcp_config = getattr(request.app.state, "mcp_config", None)
@@ -29,7 +29,7 @@ async def health_check(request: Request):
     response: dict = {
         "status": overall,
         "service": "contelligence-agent",
-        "version": "4.0.0",
+        "version": "1.0.0",
         "instance_id": get_instance_id(),
     }
 

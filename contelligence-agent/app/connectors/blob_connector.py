@@ -121,6 +121,13 @@ class BlobConnectorAdapter:
             metadata=dict(props.metadata) if props.metadata else {},
         )
 
+    async def list_containers(self) -> list[Any]:
+        await self.ensure_initialized()
+        containers = []
+        async for container in self._client.list_containers():
+            containers.append(container)
+        return containers
+    
     async def ensure_container_exists(self, container_name: str) -> None:
         """Create a blob container if it does not already exist.
 

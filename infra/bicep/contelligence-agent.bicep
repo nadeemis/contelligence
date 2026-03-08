@@ -1,16 +1,10 @@
 // ============================================================================
-// Contelligence Agent — Azure Container App
+// Contelligence Agent — Azure Container App (AVM)
 // ============================================================================
-// Provisions the Container App with:
+// Wraps AVM br/public:avm/res/app/container-app:0.20.0 with:
 //   - Horizontal autoscaling (HTTP concurrency + CPU utilization)
 //   - Sticky sessions for SSE stream affinity
-//   - Phase 4 environment variables for all production-hardening components
-//
-// Usage:
-//   az deployment group create \
-//     --resource-group <rg> \
-//     --template-file contelligence-agent.bicep \
-//     --parameters acrName=<acr> containerAppEnvId=<cae-id>
+//   - All production environment variables
 // ============================================================================
 
 @description('Name of the Container App.')
@@ -22,11 +16,11 @@ param location string = resourceGroup().location
 @description('Name of the Azure Container Registry.')
 param acrName string
 
+@description('ACR login server (e.g. crxxx.azurecr.io).')
+param acrLoginServer string
+
 @description('Container App Environment resource ID.')
 param containerAppEnvId string
-
-@description('Container image tag.')
-param imageTag string = 'latest'
 
 // --- Scaling parameters ---
 
@@ -85,117 +79,126 @@ param cacheTtlDays int = 30
 @description('Internal URL of the Copilot CLI headless server (host:port).')
 param copilotCliUrl string = ''
 
+// --- Azure Service Endpoints ---
+
+@description('Tags to apply to the Container App.')
+param tags object = {}
+
+@description('ACR admin password for registry authentication.')
+@secure()
+param acrPassword string = ''
+
+@description('Container image (placeholder for initial provisioning).')
+param containerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+
+@description('Azure Cosmos DB endpoint.')
+param cosmosEndpoint string = ''
+
+@description('Azure Storage account name.')
+param storageAccountName string = ''
+
+@description('Azure AI Search account name.')
+param searchAccountName string = ''
+
+@description('Azure Document Intelligence endpoint.')
+param docIntelligenceEndpoint string = ''
+
+@description('Azure OpenAI endpoint.')
+param openAIEndpoint string = ''
+
+@description('Azure OpenAI chat model deployment name.')
+param openAIDeployment string = 'gpt-41'
+
+@description('Azure OpenAI embedding model deployment name.')
+param openAIEmbeddingsDeployment string = 'text-embedding-3-large'
+
+@description('Azure MCP Server URL (HTTP mode).')
+param mcpServerUrl string = ''
+
 // =========================================================================
-// Container App
+// Container App (AVM)
 // =========================================================================
 
-resource agentApp 'Microsoft.App/containerApps@2024-03-01' = {
-  name: containerAppName
-  location: location
-  identity: {
-    type: 'SystemAssigned'
-  }
-  properties: {
-    managedEnvironmentId: containerAppEnvId
-    configuration: {
-      ingress: {
-        external: true
-        targetPort: 8000
-        transport: 'auto'
-        stickySessions: {
-          affinity: 'sticky'
-        }
-      }
-      registries: [
-        {
-          server: '${acrName}.azurecr.io'
-          identity: 'system'
-        }
-      ]
+module agentApp 'br/public:avm/res/app/container-app:0.20.0' = {
+  name: '${containerAppName}-deploy'
+  params: {
+    name: containerAppName
+    location: location
+    tags: union(tags, { 'azd-service-name': 'agent' })
+    environmentResourceId: containerAppEnvId
+    managedIdentities: {
+      systemAssigned: true
     }
-    template: {
-      containers: [
-        {
-          name: 'agent'
-          image: '${acrName}.azurecr.io/contelligence-agent:${imageTag}'
-          resources: {
-            cpu: json('2.0')
-            memory: '4Gi'
-          }
-          env: [
-            // --- Application Insights ---
-            {
-              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-              value: appInsightsConnectionString
-            }
-            // --- Key Vault ---
-            {
-              name: 'KEY_VAULT_URL'
-              value: keyVaultUrl
-            }
-            // --- Authentication ---
-            {
-              name: 'AZURE_AD_TENANT_ID'
-              value: azureAdTenantId
-            }
-            {
-              name: 'AZURE_AD_CLIENT_ID'
-              value: azureAdClientId
-            }
-            {
-              name: 'AUTH_ENABLED'
-              value: string(authEnabled)
-            }
-            // --- Rate Limiting ---
-            {
-              name: 'RATE_LIMIT_OPENAI_RPM'
-              value: string(rateLimitOpenaiRpm)
-            }
-            {
-              name: 'RATE_LIMIT_DOC_INTEL_RPM'
-              value: string(rateLimitDocIntelRpm)
-            }
-            // --- Retention / Caching ---
-            {
-              name: 'SESSION_RETENTION_DAYS'
-              value: string(sessionRetentionDays)
-            }
-            {
-              name: 'CACHE_TTL_DAYS'
-              value: string(cacheTtlDays)
-            }
-            // --- Copilot CLI ---
-            {
-              name: 'CLI_URL'
-              value: copilotCliUrl
-            }
-          ]
+    ingressExternal: true
+    ingressTargetPort: 8000
+    ingressTransport: 'auto'
+    stickySessionsAffinity: 'sticky'
+    secrets: [
+      {
+        name: 'registry-password'
+        value: acrPassword
+      }
+    ]
+    registries: [
+      {
+        server: acrLoginServer
+        username: acrName
+        passwordSecretRef: 'registry-password'
+      }
+    ]
+    containers: [
+      {
+        name: 'agent'
+        image: containerImage
+        resources: {
+          cpu: '2'
+          memory: '4Gi'
         }
-      ]
-      scale: {
-        minReplicas: minReplicas
-        maxReplicas: maxReplicas
-        rules: [
-          {
-            name: 'http-scaling'
-            http: {
-              metadata: {
-                concurrentRequests: httpConcurrency
-              }
-            }
-          }
-          {
-            name: 'cpu-scaling'
-            custom: {
-              type: 'cpu'
-              metadata: {
-                type: 'Utilization'
-                value: cpuThreshold
-              }
-            }
-          }
+        env: [
+          { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+          { name: 'KEY_VAULT_URL', value: keyVaultUrl }
+          { name: 'AZURE_AD_TENANT_ID', value: azureAdTenantId }
+          { name: 'AZURE_AD_CLIENT_ID', value: azureAdClientId }
+          { name: 'AUTH_ENABLED', value: string(authEnabled) }
+          { name: 'RATE_LIMIT_OPENAI_RPM', value: string(rateLimitOpenaiRpm) }
+          { name: 'RATE_LIMIT_DOC_INTEL_RPM', value: string(rateLimitDocIntelRpm) }
+          { name: 'SESSION_RETENTION_DAYS', value: string(sessionRetentionDays) }
+          { name: 'CACHE_TTL_DAYS', value: string(cacheTtlDays) }
+          { name: 'CLI_URL', value: copilotCliUrl }
+          { name: 'AZURE_COSMOS_ENDPOINT', value: cosmosEndpoint }
+          { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
+          { name: 'AZURE_SEARCH_ACCOUNT_NAME', value: searchAccountName }
+          { name: 'AZURE_DOC_INTELLIGENCE_ENDPOINT', value: docIntelligenceEndpoint }
+          { name: 'AZURE_OPENAI_ENDPOINT', value: openAIEndpoint }
+          { name: 'AZURE_OPENAI_DEPLOYMENT', value: openAIDeployment }
+          { name: 'AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT', value: openAIEmbeddingsDeployment }
+          { name: 'AZURE_MCP_SERVER_URL', value: mcpServerUrl }
         ]
       }
+    ]
+    scaleSettings: {
+      minReplicas: minReplicas
+      maxReplicas: maxReplicas
+      rules: [
+        {
+          name: 'http-scaling'
+          http: {
+            metadata: {
+              concurrentRequests: httpConcurrency
+            }
+          }
+        }
+        {
+          name: 'cpu-scaling'
+          custom: {
+            type: 'cpu'
+            metadata: {
+              type: 'Utilization'
+              value: cpuThreshold
+            }
+          }
+        }
+      ]
     }
   }
 }
@@ -205,10 +208,10 @@ resource agentApp 'Microsoft.App/containerApps@2024-03-01' = {
 // =========================================================================
 
 @description('Container App FQDN.')
-output containerAppFqdn string = agentApp.properties.configuration.ingress.fqdn
+output fqdn string = agentApp.outputs.fqdn
 
 @description('Container App name.')
-output containerAppName string = agentApp.name
+output containerAppName string = agentApp.outputs.name
 
 @description('Container App managed identity principal ID.')
-output principalId string = agentApp.identity.principalId
+output principalId string = agentApp.outputs.systemAssignedMIPrincipalId

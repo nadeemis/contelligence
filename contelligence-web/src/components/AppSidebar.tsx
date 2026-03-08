@@ -11,6 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { AgentStatus } from "@/components/AgentStatus";
 import { useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -82,17 +83,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        {!collapsed && (
-          <div className="rounded-lg bg-secondary p-3">
-            <p className="text-xs text-muted-foreground">
-              Agent Status
-            </p>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-success animate-pulse-glow" />
-              <span className="text-sm text-foreground">Online</span>
-            </div>
-          </div>
-        )}
+        {!collapsed && <AgentStatus />}
       </SidebarFooter>
     </Sidebar>
   );

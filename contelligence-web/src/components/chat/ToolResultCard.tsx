@@ -5,10 +5,14 @@ interface ToolResultCardProps {
   callId: string;
   toolName: string;
   result: unknown;
+  parameters: Record<string, unknown>;
+  timestamp: string;
+  startedAt: string;
+  completedAt: string;
   durationMs: number;
 }
 
-export function ToolResultCard({ callId, toolName, result, durationMs }: ToolResultCardProps) {
+export function ToolResultCard({ callId, toolName, result, parameters, timestamp, startedAt, completedAt, durationMs }: ToolResultCardProps) {
   const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
   const isError = typeof result === "object" && result !== null && "error" in result;
 
@@ -21,21 +25,34 @@ export function ToolResultCard({ callId, toolName, result, durationMs }: ToolRes
         <div className="flex items-center gap-2 mb-2">
           <Badge className="bg-success/10 text-success text-xs border-0">tool_result</Badge>
           <span className="text-sm font-mono text-foreground">{toolName}</span>
-          <span className="text-xs text-muted-foreground">({callId.slice(0, 8)})</span>
-        </div>
-        <div className="rounded bg-background/50 p-3 font-mono text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">result:</span>
-            <span className="text-foreground truncate flex-1">
-              {resultStr.length > 200 ? resultStr.slice(0, 200) + "..." : resultStr}
-            </span>
+          <span className="text-xs text-muted-foreground ml-2">({timestamp})</span>
+          <span className="ml-auto flex items-center gap-1.5 shrink-0">
             {isError ? (
-              <XCircle className="h-3 w-3 text-destructive shrink-0" />
+              <XCircle className="h-3 w-3 text-destructive" />
             ) : (
-              <CheckCircle className="h-3 w-3 text-success shrink-0" />
+              <CheckCircle className="h-3 w-3 text-success" />
             )}
-            <span className="text-muted-foreground shrink-0">{durationMs}ms</span>
-          </div>
+            <span className="text-xs text-muted-foreground">{durationMs}ms</span>
+          </span>
+        </div>
+        <div className="rounded bg-background/50 p-3 font-mono text-xs space-y-2">
+          {parameters && (
+            <div>
+              <span className="text-muted-foreground">parameters:</span>
+              <pre className="text-foreground mt-1 whitespace-pre-wrap break-all">
+                {JSON.stringify(parameters, null, 2)}
+              </pre>
+            </div>
+          )}
+          {result && (
+            <div>
+              <span className="text-muted-foreground">result:</span>
+              <pre className="text-foreground mt-1 whitespace-pre-wrap break-all">
+                {resultStr.length > 200 ? resultStr.slice(0, 200) + "..." : resultStr}
+              </pre>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

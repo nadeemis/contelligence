@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { User, StopCircle, Wrench, Clock, FileText, AlertCircle, Radio, Plus, ArrowDownToLine, PauseCircle } from "lucide-react";
+import { User, StopCircle, Wrench, Clock, FileText, AlertCircle, Radio, Plus, ArrowDownToLine, PauseCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ChatAgentPicker } from "@/components/ChatAgentPicker";
@@ -29,10 +29,26 @@ const Chat = () => {
   const [userMessages, setUserMessages] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState("gpt-4o");
+  const [selectedModel, setSelectedModel] = useState("");
   const { events, isStreaming, sessionTitle, connect, reset } = useAgentStream();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [summaryFullyExpanded, setSummaryFullyExpanded] = useState(false);
+
+  // ── Fetch available models from backend ──
+  const { data: availableModels = [] } = useQuery({
+    queryKey: ["models"],
+    queryFn: () => agentApi.listModels(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Select first model as default once loaded
+  useEffect(() => {
+    if (!selectedModel && availableModels.length > 0) {
+      setSelectedModel(availableModels[0].id);
+    }
+  }, [availableModels, selectedModel]);
 
   // Re-enable auto-scroll when a new streaming session starts
   useEffect(() => {
@@ -137,6 +153,10 @@ const Chat = () => {
             callId={turn.tool_call.tool_name}
             toolName={turn.tool_call.tool_name}
             result={turn.tool_call.error ?? turn.tool_call.result ?? ""}
+            parameters={turn.tool_call.parameters}
+            timestamp={turn.timestamp}
+            startedAt={turn.tool_call.started_at}
+            completedAt={turn.tool_call.completed_at}
             durationMs={turn.tool_call.duration_ms}
           />,
         );
@@ -254,21 +274,14 @@ const Chat = () => {
             <span className="text-xs text-muted-foreground">Model:</span>
             <Select value={selectedModel} onValueChange={setSelectedModel}>
               <SelectTrigger className="h-7 w-[180px] text-xs">
-                <SelectValue />
+                <SelectValue placeholder="Select model…" />
               </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="claude-haiko-4.5">Claude Haiko 4.5</SelectItem>
-              <SelectItem value="claude-opus-4.5">Claude Opus 4.5</SelectItem>
-              <SelectItem value="claude-opus-4.6">Claude Opus 4.6</SelectItem>
-              <SelectItem value="claude-sonnet-4.5">Claude Sonnet 4.5</SelectItem>
-              <SelectItem value="claude-sonnet-4.6">Claude Sonnet 4.6</SelectItem>
-              <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro (Preview)</SelectItem>
-              <SelectItem value="claude-opus-4.6-fast">Claude Opus 4.6 (fast mode)</SelectItem>
-              <SelectItem value="gpt-5-mini">GPT 5 Mini</SelectItem>
-              <SelectItem value="gpt-5.1">GPT 5.1</SelectItem>
-              <SelectItem value="gpt-5.2">GPT 5.2</SelectItem>
-            </SelectContent>
-          </Select>
+              <SelectContent>
+                {availableModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button
             size="sm"
@@ -330,16 +343,37 @@ const Chat = () => {
 
       {/* Session summary banner for resumed sessions */}
       {isExistingSession && isSessionFinished && !isStreaming && userMessages.length === 0 && (
-        <div className="mb-3 rounded-lg border border-border bg-secondary/50 p-3 text-sm">
-          <div className="flex items-center gap-4 text-muted-foreground">
-            <span className="flex items-center gap-1"><Wrench className="h-3.5 w-3.5" /> {session.metrics.total_tool_calls} tool calls</span>
-            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {formatDuration(session.metrics.total_duration_seconds)}</span>
-            <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> {session.metrics.documents_processed} docs</span>
-            {session.metrics.errors_encountered > 0 && (
-              <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3.5 w-3.5" /> {session.metrics.errors_encountered} errors</span>
-            )}
-          </div>
-          {session.summary && <div className="mt-2 text-foreground"><MarkdownContent>{session.summary}</MarkdownContent></div>}
+        <div className="mb-3 rounded-lg border border-border bg-secondary/50 text-sm">
+          <button
+            type="button"
+            onClick={() => setSummaryExpanded((v) => !v)}
+            className="flex w-full items-center justify-between p-3 text-left hover:bg-secondary/80 rounded-lg transition-colors"
+          >
+            <div className="flex items-center gap-4 text-muted-foreground">
+              <span className="flex items-center gap-1"><Wrench className="h-3.5 w-3.5" /> {session.metrics.total_tool_calls} tool calls</span>
+              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {formatDuration(session.metrics.total_duration_seconds)}</span>
+              <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> {session.metrics.documents_processed} docs</span>
+              {session.metrics.errors_encountered > 0 && (
+                <span className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3.5 w-3.5" /> {session.metrics.errors_encountered} errors</span>
+              )}
+            </div>
+            {summaryExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+          </button>
+          {summaryExpanded && session.summary && (
+            <div className="px-3 pb-3 text-foreground border-t border-border pt-2">
+              <div className={`overflow-hidden ${summaryFullyExpanded ? '' : 'max-h-[15em] line-clamp-[10]'}`}>
+                <MarkdownContent>{session.summary}</MarkdownContent>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSummaryFullyExpanded((v) => !v)}
+                className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {summaryFullyExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {summaryFullyExpanded ? 'Show less' : 'Show more'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -95,6 +95,10 @@ export const agentApi = {
     apiFetch<void>(`/agent/sessions/${sessionId}/cancel`, {
       method: "DELETE",
     }),
+
+  listModels: () =>
+    apiFetch<{ models: Array<{ id: string; name: string; capabilities?: Record<string, unknown> }> }>("/agent/models")
+      .then((r) => r.models),
 };
 
 // ── Schedule API ─────────────────────────

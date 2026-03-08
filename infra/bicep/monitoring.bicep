@@ -1,14 +1,7 @@
 // ============================================================================
-// Contelligence Monitoring — Application Insights & Log Analytics
+// Contelligence Monitoring — Application Insights & Log Analytics (AVM)
 // ============================================================================
-// Provisions the Log Analytics workspace and Application Insights resource
-// for the Contelligence agent observability stack.
-//
-// Usage:
-//   az deployment group create \
-//     --resource-group <rg> \
-//     --template-file monitoring.bicep \
-//     --parameters workspaceName=<name>
+// Wraps AVM modules for Log Analytics and Application Insights.
 // ============================================================================
 
 @description('Name of the Log Analytics workspace.')
@@ -23,36 +16,33 @@ param location string = resourceGroup().location
 @description('Retention period in days for Log Analytics.')
 param retentionDays int = 90
 
+@description('Tags to apply.')
+param tags object = {}
+
 // ---------------------------------------------------------------------------
-// Log Analytics Workspace
+// Log Analytics Workspace (AVM)
 // ---------------------------------------------------------------------------
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: workspaceName
-  location: location
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: retentionDays
-    features: {
-      enableLogAccessUsingOnlyResourcePermissions: true
-    }
+module logAnalytics 'br/public:avm/res/operational-insights/workspace:0.15.0' = {
+  name: '${workspaceName}-deploy'
+  params: {
+    name: workspaceName
+    location: location
+    tags: tags
+    skuName: 'PerGB2018'
+    dataRetention: retentionDays
   }
 }
 
 // ---------------------------------------------------------------------------
-// Application Insights (workspace-based)
+// Application Insights (AVM)
 // ---------------------------------------------------------------------------
-resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: appInsightsName
-  location: location
-  kind: 'web'
-  properties: {
-    Application_Type: 'web'
-    WorkspaceResourceId: logAnalytics.id
-    IngestionMode: 'LogAnalytics'
-    publicNetworkAccessForIngestion: 'Enabled'
-    publicNetworkAccessForQuery: 'Enabled'
+module appInsights 'br/public:avm/res/insights/component:0.7.1' = {
+  name: '${appInsightsName}-deploy'
+  params: {
+    name: appInsightsName
+    location: location
+    tags: tags
+    workspaceResourceId: logAnalytics.outputs.resourceId
   }
 }
 
@@ -60,10 +50,10 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 // Outputs
 // ---------------------------------------------------------------------------
 @description('Application Insights connection string (set as APPLICATIONINSIGHTS_CONNECTION_STRING).')
-output appInsightsConnectionString string = appInsights.properties.ConnectionString
+output appInsightsConnectionString string = appInsights.outputs.connectionString
 
 @description('Application Insights instrumentation key.')
-output appInsightsInstrumentationKey string = appInsights.properties.InstrumentationKey
+output appInsightsInstrumentationKey string = appInsights.outputs.instrumentationKey
 
-@description('Log Analytics workspace ID.')
-output logAnalyticsWorkspaceId string = logAnalytics.id
+@description('Log Analytics workspace resource ID.')
+output logAnalyticsWorkspaceId string = logAnalytics.outputs.resourceId
