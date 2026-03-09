@@ -98,6 +98,18 @@ class AppSettings(BaseSettings):
     # Phase 4 — Horizontal Scaling
     MAX_REPLICAS: int = 10
 
+    # Azure DevOps
+    AZURE_DEVOPS_ORG: str = ""                       # Azure DevOps organization name
+    AZURE_DEVOPS_PAT: str = ""                       # Personal Access Token (optional, takes priority over Entra ID)
+    AZURE_DEVOPS_DEFAULT_PROJECT: str = ""            # Default project name (optional)
+    AZURE_DEVOPS_TENANT_ID: str = ""                 # Entra ID tenant (optional, for multi-tenant)
+
+    # Power BI
+    POWERBI_WORKSPACE_ID: str = ""                    # Default Power BI workspace (group) ID
+    POWERBI_TENANT_ID: str = ""                       # Entra ID tenant for Power BI auth
+    POWERBI_CLIENT_ID: str = ""                       # Service principal client ID (optional)
+    POWERBI_CLIENT_SECRET: str = ""                   # Service principal client secret (optional)
+
     # Phase 5 — Scheduling Engine
     AGENT_BASE_URL: str = "http://localhost:8060"    # Base URL for webhook URLs
     SCHEDULE_AUTO_PAUSE_THRESHOLD: int = 3           # Consecutive failures before auto-pause

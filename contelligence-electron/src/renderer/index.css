@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 10% 7%;
+    --foreground: 40 50% 82%;
+
+    --card: 220 10% 9%;
+    --card-foreground: 40 50% 82%;
+
+    --popover: 220 10% 8%;
+    --popover-foreground: 40 50% 82%;
+
+    --primary: 38 80% 52%;
+    --primary-foreground: 220 10% 7%;
+
+    --secondary: 220 8% 15%;
+    --secondary-foreground: 38 40% 75%;
+
+    --muted: 220 8% 13%;
+    --muted-foreground: 35 25% 58%;
+
+    --accent: 30 45% 40%;
+    --accent-foreground: 40 60% 85%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 55% 92%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 220 10% 7%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 10% 7%;
+
+    --border: 220 8% 18%;
+    --input: 220 8% 15%;
+    --ring: 38 80% 52%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 220 10% 9%;
+    --sidebar-foreground: 35 25% 58%;
+    --sidebar-primary: 38 80% 52%;
+    --sidebar-primary-foreground: 220 10% 7%;
+    --sidebar-accent: 220 8% 13%;
+    --sidebar-accent-foreground: 40 50% 82%;
+    --sidebar-border: 220 8% 15%;
+    --sidebar-ring: 38 80% 52%;
+
+    --chart-1: 38 80% 52%;
+    --chart-2: 28 55% 48%;
+    --chart-3: 15 65% 50%;
+    --chart-4: 48 70% 50%;
+    --chart-5: 8 55% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Exo 2', system-ui, sans-serif;
+    /* Prevent text selection on drag-areas (Electron specific) */
+    -webkit-app-region: no-drag;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* macOS hidden titlebar inset — drag region */
+.electron-drag-region {
+  -webkit-app-region: drag;
+}
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(220 10% 7%);
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(220 8% 22%);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(220 8% 30%);
+}

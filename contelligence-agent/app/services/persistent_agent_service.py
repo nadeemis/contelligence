@@ -951,11 +951,11 @@ class PersistentAgentService:
                 event.data.get("params", {}),
                 turn_sequence,
             )
-        elif etype == "tool_call_complete":
+        elif etype == "tool_call_complete" or etype == "tool_execution_complete":
             await self.persist_tool_complete(
                 session_id,
                 event.data.get("tool", "unknown"),
-                event.data.get("result"),
+                event.data,
             )
         elif etype == "tool_call_error":
             await self.persist_tool_error(

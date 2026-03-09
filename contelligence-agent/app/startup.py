@@ -351,7 +351,6 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     await session_factory.verify(full_probe=True)
 
     app.state.session_factory = session_factory
-
     
     # ------------------------------------------------------------------
     # Session store

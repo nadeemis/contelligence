@@ -1,5 +1,7 @@
-import { CheckCircle, XCircle, Bot } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle, XCircle, Bot, Eye, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { agentApi } from "@/lib/api";
 
 interface ToolResultCardProps {
   callId: string;
@@ -10,11 +12,32 @@ interface ToolResultCardProps {
   startedAt: string;
   completedAt: string;
   durationMs: number;
+  sessionId?: string;
+  sequence?: number;
 }
 
-export function ToolResultCard({ callId, toolName, result, parameters, timestamp, startedAt, completedAt, durationMs }: ToolResultCardProps) {
-  const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-  const isError = typeof result === "object" && result !== null && "error" in result;
+export function ToolResultCard({ callId, toolName, result, parameters, timestamp, startedAt, completedAt, durationMs, sessionId, sequence }: ToolResultCardProps) {
+  const [fullResult, setFullResult] = useState<unknown>(null);
+  const [loading, setLoading] = useState(false);
+
+  const isTruncated = typeof result === "object" && result !== null && "_truncated" in result;
+  const displayResult = fullResult ?? result;
+  const resultStr = typeof displayResult === "string" ? displayResult : JSON.stringify(displayResult, null, 2);
+  const isError = typeof displayResult === "object" && displayResult !== null && "error" in displayResult;
+
+  const handleViewFull = async () => {
+    if (!sessionId) return;
+    setLoading(true);
+    try {
+      const turns = await agentApi.getSessionLogs(sessionId, { include_tool_results: true });
+      const match = turns.find((t) => t.sequence === sequence && t.role === "tool");
+      if (match?.tool_call?.result) {
+        setFullResult(match.tool_call.result);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex gap-3">
@@ -44,12 +67,28 @@ export function ToolResultCard({ callId, toolName, result, parameters, timestamp
               </pre>
             </div>
           )}
-          {result && (
+          {displayResult && (!isTruncated || fullResult) && (
             <div>
               <span className="text-muted-foreground">result:</span>
               <pre className="text-foreground mt-1 whitespace-pre-wrap break-all">
-                {resultStr.length > 200 ? resultStr.slice(0, 200) + "..." : resultStr}
+                {resultStr.length > 200 && !fullResult ? resultStr.slice(0, 200) + "..." : resultStr}
               </pre>
+            </div>
+          )}
+          {isTruncated && !fullResult && (
+            <div>
+              <span className="text-muted-foreground">result:</span>
+              <button
+                onClick={handleViewFull}
+                disabled={loading || !sessionId}
+                className="ml-2 inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 disabled:opacity-50"
+              >
+                {loading ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> Loading…</>
+                ) : (
+                  <><Eye className="h-3 w-3" /> View full result</>
+                )}
+              </button>
             </div>
           )}
 

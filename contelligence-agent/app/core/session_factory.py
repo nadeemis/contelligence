@@ -839,11 +839,21 @@ class SessionFactory:
                     type="tool_call_complete",
                     data={
                         "tool": tool_name,
+                        "timestamp": input_data.get("timestamp", ""),
+                        "tool_cwd": input_data.get("cwd", ""),
                         "duration_ms": duration_ms,
+                        "tool_args": input_data.get("toolArgs", None),
+                        "tool_result": input_data.get("toolResult", None),
+                        "result_type": input_data.get("resultType", None),
+                        "tool_telemetry": input_data.get("toolTelemetry", None),
                     },
                     session_id=session_id,
                 )
             )
+            
+            logger.info(f"Tool {tool_name} completed in {duration_ms}ms for session {session_id}")
+            logger.debug(f"Tool {tool_name} post-use input data: {input_data}")
+            
             return {}
 
         async def on_error_occurred(

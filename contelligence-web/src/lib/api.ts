@@ -77,8 +77,8 @@ export const agentApi = {
   getSession: (id: string) =>
     apiFetch<SessionRecord>(`/agent/sessions/${id}`),
 
-  getSessionLogs: (id: string) =>
-    apiFetch<{ session_id: string; turns: ConversationTurn[] }>(`/agent/sessions/${id}/logs`)
+  getSessionLogs: (id: string, params?: { include_tool_results?: boolean }) =>
+    apiFetch<{ session_id: string; turns: ConversationTurn[] }>(`/agent/sessions/${id}/logs${toQueryString(params)}`)
       .then((r) => r.turns),
 
   getSessionOutputs: (id: string) =>
