@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class GetIterationsParams(BaseModel):
     """Parameters for the get_iterations tool."""
 
+    organization: str | None = Field(
+        None,
+        description=(
+            "Azure DevOps organization name or ID. "
+            "Uses the configured default organization when omitted."
+        ),
+    )
     project: str | None = Field(
         None,
         description=(
@@ -75,6 +82,7 @@ async def get_iterations(
                 context,
                 "_apis/work/teamsettings/iterations",
                 params=query_params,
+                organization=params.organization,
                 project=project_with_team,
             )
         else:
@@ -83,6 +91,7 @@ async def get_iterations(
                 context,
                 "_apis/wit/classificationnodes/iterations",
                 params=query_params,
+                organization=params.organization,
                 project=params.project,
             )
 

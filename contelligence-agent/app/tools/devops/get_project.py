@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class GetProjectParams(BaseModel):
     """Parameters for the get_project tool."""
 
+    organization: str | None = Field(
+        None,
+        description=(
+            "Azure DevOps organization name or ID. "
+            "Uses the configured default organization when omitted."
+        ),
+    )
     project: str | None = Field(
         None,
         description=(
@@ -41,11 +48,17 @@ async def get_project(
 ) -> dict[str, Any]:
     """Fetch project details from Azure DevOps."""
     try:
+        settings = context.get("settings")
+        org_name = params.organization or getattr(settings, "AZURE_DEVOPS_DEFAULT_ORG", "")
+        if not org_name:
+            return {"error": "No organization specified and AZURE_DEVOPS_DEFAULT_ORG is not set"}
+        
         if params.project == "*":
             # List all projects (org-level, no project segment)
             data = await devops_request(
                 context,
                 "_apis/projects",
+                organization=org_name,
                 project="",  # force no project segment
             )
             projects = data.get("value", [])
@@ -65,7 +78,6 @@ async def get_project(
             }
 
         # Single project
-        settings = context.get("settings")
         project_name = params.project or getattr(
             settings, "AZURE_DEVOPS_DEFAULT_PROJECT", "",
         )
@@ -75,6 +87,7 @@ async def get_project(
         data = await devops_request(
             context,
             f"_apis/projects/{project_name}",
+            organization=org_name,
             project="",  # project already in the path
         )
 

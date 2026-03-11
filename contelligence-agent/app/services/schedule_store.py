@@ -14,7 +14,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import CosmosHttpResponseError, CosmosResourceNotFoundError
 
 from app.models.exceptions import ScheduleNotFoundError
@@ -43,7 +42,7 @@ async def _safe_read(coro: Any, schedule_id: str) -> Any:
 # ---------------------------------------------------------------------------
 # ScheduleStore
 # ---------------------------------------------------------------------------
-
+from app.store.storage_manager import StorageManager
 
 class ScheduleStore:
     """Data access layer for schedule persistence in Cosmos DB.
@@ -56,12 +55,11 @@ class ScheduleStore:
 
     def __init__(
         self,
-        cosmos_client: CosmosClient,
-        database_name: str = "contelligence-agent",
+        storage_manager: StorageManager,
     ) -> None:
-        db = cosmos_client.get_database_client(database_name)
-        self.schedules = db.get_container_client("schedules")
-        self.runs = db.get_container_client("schedule-runs")
+        
+        self.schedules = storage_manager.get_container("schedules")
+        self.runs = storage_manager.get_container("schedule-runs")
 
     # ------------------------------------------------------------------
     # Schedules — Write

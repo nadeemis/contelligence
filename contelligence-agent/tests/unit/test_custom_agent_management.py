@@ -170,7 +170,7 @@ class TestAgentStore:
         mock_client.get_database_client.return_value = mock_db
         mock_db.get_container_client.return_value = mock_container
 
-        store = AgentStore(cosmos_client=mock_client, database_name="test-db")
+        store = AgentStore(mock_client)
         store._container = mock_container
         return store
 

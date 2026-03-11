@@ -852,7 +852,7 @@ class SessionFactory:
             )
             
             logger.info(f"Tool {tool_name} completed in {duration_ms}ms for session {session_id}")
-            logger.debug(f"Tool {tool_name} post-use input data: {input_data}")
+            # logger.debug(f"Tool {tool_name} post-use input data: {input_data}")
             
             return {}
 

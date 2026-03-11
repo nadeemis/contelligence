@@ -15,7 +15,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Coroutine
 
-from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import (
     CosmosAccessConditionFailedError,
     CosmosResourceNotFoundError,
@@ -33,14 +32,19 @@ class SchedulerLeaderElection:
 
     def __init__(
         self,
-        cosmos_client: CosmosClient,
+        storage_manager: Any,
         instance_id: str,
-        database_name: str = "contelligence-agent",
     ) -> None:
-        self.container = (
-            cosmos_client.get_database_client(database_name)
-            .get_container_client(self.LOCK_CONTAINER)
-        )
+        from app.store.storage_manager import StorageManager
+
+        if isinstance(storage_manager, StorageManager):
+            self.container = storage_manager.get_container(self.LOCK_CONTAINER)
+        else:
+            # Legacy path: raw cosmos_client + default database (backward compat)
+            self.container = (
+                storage_manager.get_database_client("contelligence-agent")
+                .get_container_client(self.LOCK_CONTAINER)
+            )
         self.instance_id = instance_id
         self.is_leader: bool = False
         self._running: bool = False

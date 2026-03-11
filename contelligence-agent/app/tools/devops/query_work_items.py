@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class QueryWorkItemsParams(BaseModel):
     """Parameters for the query_work_items tool."""
-
+    
     query: str = Field(
         ...,
         description=(
@@ -25,6 +25,13 @@ class QueryWorkItemsParams(BaseModel):
             "From WorkItems Where [System.WorkItemType] = 'Task' "
             "AND [System.State] <> 'Closed' "
             "order by [System.CreatedDate] desc\""
+        ),
+    )
+    organization: str | None = Field(
+        None,
+        description=(
+            "Azure DevOps organization name or ID. "
+            "Uses the configured default organization when omitted."
         ),
     )
     project: str | None = Field(
@@ -61,20 +68,26 @@ async def query_work_items(
 ) -> dict[str, Any]:
     """Execute a WIQL query against Azure DevOps."""
     try:
+        settings = context.get("settings")
+        org_name = params.organization or getattr(settings, "AZURE_DEVOPS_DEFAULT_ORG", "")
+        if not org_name:
+            return {"error": "No organization specified and AZURE_DEVOPS_DEFAULT_ORG is not set"}
+        
+        project_name = params.project or getattr(settings, "AZURE_DEVOPS_DEFAULT_PROJECT", "")
+        if not project_name:
+            return {"error": "No project specified and AZURE_DEVOPS_DEFAULT_PROJECT is not set"}
+        
         query_params: dict[str, Any] = {}
         if params.top is not None:
             query_params["$top"] = params.top
 
         # Build the path, optionally including team segment
         path = "_apis/wit/wiql"
-        project = params.project
+        project = project_name
         if params.team:
             # For team-scoped WIQL the URL is /{project}/{team}/_apis/wit/wiql
             # We inject the team by extending the project segment.
-            settings = context.get("settings")
-            effective_project = project or getattr(
-                settings, "AZURE_DEVOPS_DEFAULT_PROJECT", "",
-            )
+            effective_project = project
             if effective_project:
                 project = f"{effective_project}/{params.team}"
             else:
@@ -86,6 +99,7 @@ async def query_work_items(
             method="POST",
             json_body={"query": params.query},
             params=query_params,
+            organization=org_name,
             project=project,
         )
 

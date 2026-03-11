@@ -9,7 +9,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import (
     CosmosHttpResponseError,
     CosmosResourceExistsError,
@@ -31,6 +30,7 @@ class AgentNotFoundError(Exception):
 class AgentAlreadyExistsError(Exception):
     """Raised when attempting to create an agent with a duplicate ID."""
 
+from app.store.storage_manager import StorageManager
 
 class AgentStore:
     """CRUD operations for user-defined agent definitions in Cosmos DB.
@@ -41,14 +41,12 @@ class AgentStore:
 
     def __init__(
         self,
-        cosmos_client: CosmosClient,
-        database_name: str = "contelligence-agent",
+        storage_manager: StorageManager,
     ) -> None:
-        db = cosmos_client.get_database_client(database_name)
-        self.container = db.get_container_client("agents")
-
+        
+        self.container = storage_manager.get_container("agents")
+        
     # ── Create ─────────────────────────────────────────────────
-
     async def create_agent(
         self, record: AgentDefinitionRecord,
     ) -> AgentDefinitionRecord:

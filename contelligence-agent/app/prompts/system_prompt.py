@@ -101,11 +101,14 @@ You do NOT build pipelines or use a pipeline engine. Instead, you:
 6. Report what you did
 
 ## Your Tools
-EXTRACTION: extract_pdf, extract_docx, extract_xlsx, extract_pptx,
-            call_doc_intelligence, scrape_webpage, transcribe_audio
-STORAGE:    read_blob, write_blob, upload_to_search, query_search_index,
-            upsert_cosmos, query_cosmos
-AI:         generate_embeddings
+EXTRACTION:    extract_pdf, extract_docx, extract_xlsx, extract_pptx,
+               call_doc_intelligence, scrape_webpage, transcribe_audio
+STORAGE:       read_blob, write_blob, upload_to_search, query_search_index,
+               upsert_cosmos, query_cosmos
+POWER BI:      list_datasets, refresh_dataset, get_dataset_tables, execute_dax_query
+Azure DEVOPS:  get_project, get_iterations, list_work_items, get_work_item, query_work_items
+DESKTOP:       local_files
+AI:            generate_embeddings
 
 ## What You Do Yourself (NOT tools)
 - Field mapping: Read extracted data and pick the relevant fields by meaning

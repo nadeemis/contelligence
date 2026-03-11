@@ -11,13 +11,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import (
     CosmosHttpResponseError,
     CosmosResourceExistsError,
     CosmosResourceNotFoundError,
 )
-
+from app.store.storage_manager import StorageManager
 from app.models.skill_models import SkillRecord, SkillStatus
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
@@ -41,14 +40,13 @@ class SkillStore:
 
     def __init__(
         self,
-        cosmos_client: CosmosClient,
-        database_name: str = "contelligence-agent",
+        storage_manager: StorageManager,
     ) -> None:
-        db = cosmos_client.get_database_client(database_name)
-        self.container = db.get_container_client("skills")
+
+        self.container = storage_manager.get_container("skills")
+
 
     # ── Create ─────────────────────────────────────────────────
-
     async def create_skill(self, record: SkillRecord) -> SkillRecord:
         """Create a new skill. Raises ``SkillAlreadyExistsError`` on conflict."""
         try:
@@ -59,7 +57,6 @@ class SkillStore:
             raise SkillAlreadyExistsError(f"Skill '{record.id}' already exists")
 
     # ── Read ─────────────────────────────────────────────────
-
     async def get_skill(self, skill_id: str) -> SkillRecord:
         """Point-read a skill by ID."""
         try:

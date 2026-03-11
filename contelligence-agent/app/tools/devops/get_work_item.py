@@ -16,8 +16,14 @@ logger = logging.getLogger(__name__)
 
 class GetWorkItemParams(BaseModel):
     """Parameters for the get_work_item tool."""
-
-    work_item_id: int = Field(..., description="The ID of the work item to retrieve.")
+    
+    organization: str | None = Field(
+        None,
+        description=(
+            "Azure DevOps organization name or ID. "
+            "Uses the configured default organization when omitted."
+        ),
+    )
     project: str | None = Field(
         None,
         description=(
@@ -25,6 +31,7 @@ class GetWorkItemParams(BaseModel):
             "Uses the configured default project when omitted."
         ),
     )
+    work_item_id: int = Field(..., description="The ID of the work item to retrieve.")
     fields: str | None = Field(
         None,
         description=(
@@ -57,6 +64,15 @@ async def get_work_item(
 ) -> dict[str, Any]:
     """Fetch a single work item from Azure DevOps."""
     try:
+        settings = context.get("settings")
+        org_name = params.organization or getattr(settings, "AZURE_DEVOPS_DEFAULT_ORG", "")
+        if not org_name:
+            return {"error": "No organization specified and AZURE_DEVOPS_DEFAULT_ORG is not set"}
+        
+        project_name = params.project or getattr(settings, "AZURE_DEVOPS_DEFAULT_PROJECT", "")
+        if not project_name:
+            return {"error": "No project specified and AZURE_DEVOPS_DEFAULT_PROJECT is not set"}
+        
         query_params: dict[str, Any] = {}
         if params.fields:
             query_params["fields"] = params.fields
@@ -67,7 +83,8 @@ async def get_work_item(
             context,
             f"_apis/wit/workitems/{params.work_item_id}",
             params=query_params,
-            project=params.project,
+            organization=org_name,
+            project=project_name,
         )
 
         fields = data.get("fields", {})

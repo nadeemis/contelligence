@@ -11,7 +11,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import CosmosHttpResponseError, CosmosResourceNotFoundError
 
 from app.models.exceptions import SessionNotFoundError
@@ -49,6 +48,7 @@ async def _safe_cosmos_read(coro: Any, not_found_msg: str = "Resource not found"
 # SessionStore
 # ---------------------------------------------------------------------------
 
+from app.store.storage_manager import StorageManager
 
 class SessionStore:
     """Data access layer for session persistence in Cosmos DB.
@@ -62,19 +62,17 @@ class SessionStore:
 
     def __init__(
         self,
-        cosmos_client: CosmosClient,
-        database_name: str = "contelligence-agent",
+        storage_manager: StorageManager,
     ) -> None:
-        db = cosmos_client.get_database_client(database_name)
-        self.sessions = db.get_container_client("sessions")
-        self.conversation = db.get_container_client("conversation")
-        self.outputs = db.get_container_client("outputs")
-        self.events = db.get_container_client("events")
 
+        self.sessions = storage_manager.get_container("sessions")
+        self.conversation = storage_manager.get_container("conversation")
+        self.outputs = storage_manager.get_container("outputs")
+        self.events = storage_manager.get_container("events")
+        
     # ------------------------------------------------------------------
     # Sessions container
     # ------------------------------------------------------------------
-
     async def save_session(self, record: SessionRecord) -> None:
         """Upsert a ``SessionRecord`` (create or full-replace)."""
         await self.sessions.upsert_item(to_cosmos_dict(record))
@@ -241,7 +239,7 @@ class SessionStore:
     # ------------------------------------------------------------------
     # Delegation tracking (Phase 3)
     # ------------------------------------------------------------------
-
+    # TODO: consider removing this
     async def append_delegation(
         self,
         session_id: str,

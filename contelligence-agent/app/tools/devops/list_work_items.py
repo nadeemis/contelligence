@@ -18,14 +18,13 @@ _MAX_IDS = 200  # Azure DevOps API limit
 
 class ListWorkItemsParams(BaseModel):
     """Parameters for the list_work_items tool."""
-
-    ids: list[int] = Field(
-        ...,
+    
+    organization: str | None = Field(
+        None,
         description=(
-            "List of work item IDs to retrieve (maximum 200). "
-            "Example: [101, 102, 103]."
+            "Azure DevOps organization name or ID. "
+            "Uses the configured default organization when omitted."
         ),
-        max_length=_MAX_IDS,
     )
     project: str | None = Field(
         None,
@@ -33,6 +32,14 @@ class ListWorkItemsParams(BaseModel):
             "Azure DevOps project name or ID. "
             "Uses the configured default project when omitted."
         ),
+    )
+    ids: list[int] = Field(
+        ...,
+        description=(
+            "List of work item IDs to retrieve (maximum 200). "
+            "Example: [101, 102, 103]."
+        ),
+        max_length=_MAX_IDS,
     )
     fields: str | None = Field(
         None,
@@ -69,6 +76,15 @@ async def list_work_items(
         if not params.ids:
             return {"error": "ids list must not be empty"}
 
+        settings = context.get("settings")
+        org_name = params.organization or getattr(settings, "AZURE_DEVOPS_DEFAULT_ORG", "")
+        if not org_name:
+            return {"error": "No organization specified and AZURE_DEVOPS_DEFAULT_ORG is not set"}
+        
+        project_name = params.project or getattr(settings, "AZURE_DEVOPS_DEFAULT_PROJECT", "")
+        if not project_name:
+            return {"error": "No project specified and AZURE_DEVOPS_DEFAULT_PROJECT is not set"}
+        
         query_params: dict[str, Any] = {
             "ids": ",".join(str(i) for i in params.ids),
         }
@@ -81,7 +97,8 @@ async def list_work_items(
             context,
             "_apis/wit/workitems",
             params=query_params,
-            project=params.project,
+            organization=org_name,
+            project=project_name,
         )
 
         items = data.get("value", [])

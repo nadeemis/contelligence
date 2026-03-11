@@ -7,7 +7,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.connectors.blob_connector import BlobConnectorAdapter
 from app.core.tool_registry import define_tool, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -67,13 +66,20 @@ async def read_blob(params: ReadBlobParams, context: dict) -> dict:
     """Handle read_blob tool invocations."""
     # Use a per-request connector when the caller specifies a different
     # storage account; fall back to the default connector otherwise.
-    default_connector: BlobConnectorAdapter = context["blob"]
-    ad_hoc_connector: BlobConnectorAdapter | None = None
+    default_connector = context["blob"]
+    ad_hoc_connector = None
 
+    # Ad-hoc Azure connector only applies when running against Azure Blob
+    # Storage (the connector exposes _account_name). In local mode the
+    # LocalBlobConnectorAdapter has no _account_name.
+    default_account = getattr(default_connector, "_account_name", None)
     if (
         params.storage_account
-        and params.storage_account != default_connector._account_name
+        and default_account
+        and params.storage_account != default_account
     ):
+        from app.connectors.blob_connector import BlobConnectorAdapter
+
         ad_hoc_connector = BlobConnectorAdapter(
             account_name=params.storage_account,
             credential_type="default_azure_credential",
@@ -93,7 +99,7 @@ async def read_blob(params: ReadBlobParams, context: dict) -> dict:
             await ad_hoc_connector.close()
 
 
-async def _execute(params: ReadBlobParams, connector: BlobConnectorAdapter) -> dict:
+async def _execute(params: ReadBlobParams, connector: object) -> dict:
     """Run the requested blob action against *connector*."""
     if params.action == "list":
         # If no container is specified, list containers instead of blobs
@@ -105,7 +111,10 @@ async def _execute(params: ReadBlobParams, connector: BlobConnectorAdapter) -> d
             )
             return {
                 "count": len(containers),
-                "containers": [c.name for c in containers],
+                "containers": [
+                    c["name"] if isinstance(c, dict) else c.name
+                    for c in containers
+                ],
             }
         
         blobs = await connector.list_blobs(

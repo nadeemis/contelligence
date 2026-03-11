@@ -12,13 +12,11 @@ from app.agents import CUSTOM_AGENTS
 from app.auth.middleware import get_current_user, get_optional_user
 from app.auth.models import User
 from app.connectors.blob_connector import BlobConnectorAdapter
-from app.connectors.cosmos_connector import CosmosConnectorAdapter
 from app.dependencies import (
     get_agent_service,
     get_approval_manager,
     get_blob_connector,
     get_client_factory,
-    get_cosmos_connector,
     get_session_store,
 )
 from app.models.agent_models import InstructRequest, InstructResponse, ReplyRequest
@@ -351,7 +349,6 @@ async def download_output(
     output_id: str,
     store: SessionStore = Depends(get_session_store),
     blob_connector: BlobConnectorAdapter = Depends(get_blob_connector),
-    cosmos_connector: CosmosConnectorAdapter = Depends(get_cosmos_connector),
 ) -> Response:
     """Download a specific output artifact.
 

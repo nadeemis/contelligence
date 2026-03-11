@@ -6,6 +6,7 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -14,6 +15,10 @@ const config: ForgeConfig = {
     executableName: 'contelligence',
     appBundleId: 'com.contelligence.desktop',
     appCategoryType: 'public.app-category.developer-tools',
+    extraResource: [
+      // PyInstaller one-folder backend bundle (placed into Resources/backend)
+      path.resolve(__dirname, 'resources', 'backend'),
+    ],
   },
   rebuildConfig: {},
   makers: [

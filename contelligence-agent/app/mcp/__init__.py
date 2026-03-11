@@ -6,11 +6,10 @@ and the GitHub MCP server (repository access).
 
 from __future__ import annotations
 
-from .config import get_mcp_servers_config, resolve_github_token
+from .config import get_mcp_servers_config
 from .health import verify_mcp_servers
 
 __all__ = [
     "get_mcp_servers_config",
-    "resolve_github_token",
     "verify_mcp_servers",
 ]

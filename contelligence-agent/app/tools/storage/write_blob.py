@@ -6,7 +6,6 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from app.connectors.blob_connector import BlobConnectorAdapter
 from app.core.tool_registry import define_tool, ToolDefinition
 
 logger = logging.getLogger(__name__)
@@ -52,13 +51,20 @@ class WriteBlobParams(BaseModel):
 )
 async def write_blob(params: WriteBlobParams, context: dict) -> dict:
     """Handle write_blob tool invocations."""
-    default_connector: BlobConnectorAdapter = context["blob"]
-    ad_hoc_connector: BlobConnectorAdapter | None = None
+    default_connector = context["blob"]
+    ad_hoc_connector = None
 
+    # Ad-hoc Azure connector only applies when running against Azure Blob
+    # Storage (the connector exposes _account_name). In local mode the
+    # LocalBlobConnectorAdapter has no _account_name.
+    default_account = getattr(default_connector, "_account_name", None)
     if (
         params.storage_account
-        and params.storage_account != default_connector._account_name
+        and default_account
+        and params.storage_account != default_account
     ):
+        from app.connectors.blob_connector import BlobConnectorAdapter
+
         ad_hoc_connector = BlobConnectorAdapter(
             account_name=params.storage_account,
             credential_type="default_azure_credential",

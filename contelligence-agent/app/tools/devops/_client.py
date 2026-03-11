@@ -23,12 +23,12 @@ def _get_devops_settings(context: dict) -> tuple[str, str, str]:
     Raises ``ValueError`` when the organization is not configured.
     """
     settings = context.get("settings")
-    org: str = getattr(settings, "AZURE_DEVOPS_ORG", "") or ""
+    org: str = getattr(settings, "AZURE_DEVOPS_DEFAULT_ORG", "") or ""
     project: str = getattr(settings, "AZURE_DEVOPS_DEFAULT_PROJECT", "") or ""
     pat: str = getattr(settings, "AZURE_DEVOPS_PAT", "") or ""
 
-    if not org:
-        raise ValueError("AZURE_DEVOPS_ORG is not configured")
+    # if not org:
+    #     raise ValueError("AZURE_DEVOPS_ORG is not configured")
     return org, project, pat
 
 
@@ -62,6 +62,7 @@ async def devops_request(
     method: str = "GET",
     json_body: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
+    organization: str | None = None,
     project: str | None = None,
 ) -> dict[str, Any]:
     """Perform an authenticated request against the Azure DevOps REST API.
@@ -70,10 +71,11 @@ async def devops_request(
     If *project* is given, it is injected between the org base and the path.
     *method* defaults to ``"GET"``; pass ``"POST"`` for write / query endpoints.
     """
-    org, default_project, pat = _get_devops_settings(context)
+    default_org, default_project, pat = _get_devops_settings(context)
     effective_project = project or default_project
-
-    base = _base_url(org)
+    effective_org = organization or default_org
+    
+    base = _base_url(effective_org)
     if effective_project:
         url = f"{base}/{effective_project}/{path}"
     else:

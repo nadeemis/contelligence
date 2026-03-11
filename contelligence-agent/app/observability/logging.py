@@ -110,6 +110,7 @@ def configure_logging(log_level: str = "INFO") -> None:
     logging.getLogger('uvicorn').setLevel(logging.INFO)
     logging.getLogger('azure.cosmos').setLevel(logging.WARNING)
     logging.getLogger('sse_starlette.sse').setLevel(logging.INFO)
+    logging.getLogger('aiosqlite').setLevel(logging.INFO)
     # The GlobalEndpointManager runs a background health-check timer that
     # floods logs with ERROR-level tracebacks on transient DNS / network
     # failures.  These are retried automatically by the SDK so we only

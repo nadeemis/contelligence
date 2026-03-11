@@ -35,3 +35,5 @@ apscheduler>=3.11.2
 croniter>=6.0.0
 pytz>=2025.2
 python-multipart>=0.0.22
+# Local / standalone mode
+aiosqlite>=0.22.1

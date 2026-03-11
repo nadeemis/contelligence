@@ -101,7 +101,7 @@ class SkillsManager:
         Built-in Skills are shipped inside the container image. This method:
         1. Reads each ``SKILL.md`` in the ``skills/`` directory.
         2. Validates the frontmatter.
-        3. Creates or updates the Cosmos DB record.
+        3. Creates or updates the DB record.
         4. Uploads Skill files to Blob Storage.
 
         Returns the number of built-in Skills synced.
@@ -155,7 +155,7 @@ class SkillsManager:
                     partition_key="skill",
                 )
 
-                # Upsert to Cosmos (idempotent)
+                # Upsert to Database store (idempotent)
                 try:
                     await self._store.create_skill(record)
                 except SkillAlreadyExistsError:

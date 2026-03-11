@@ -1,24 +1,11 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
+from app.connectors.blob_types import BlobInfo, BlobProperties
+
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
-
-@dataclass
-class BlobInfo:
-    name: str
-    size: int
-    content_type: str | None
-
-
-@dataclass
-class BlobProperties:
-    name: str
-    size: int
-    content_type: str | None
-    metadata: dict[str, str]
 
 
 class BlobConnectorAdapter:

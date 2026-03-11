@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron';
  * renderer; only explicitly allowed IPC channels are accessible.
  */
 contextBridge.exposeInMainWorld('electronAPI', {
-  // API base URL (resolved from main process env)
+  // API base URL (resolved from main process — dynamic port)
   getApiBaseUrl: (): Promise<string> => ipcRenderer.invoke('get-api-base-url'),
 
   // App information
