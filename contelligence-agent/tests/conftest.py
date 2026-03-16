@@ -221,6 +221,20 @@ class MockSessionStore:
                 return artifact
         raise SessionNotFoundError(f"Output {output_id} in session {session_id}")
 
+    async def delete_turns(self, session_id: str) -> int:
+        turns = self.turns.pop(session_id, [])
+        return len(turns)
+
+    async def delete_outputs(self, session_id: str) -> int:
+        outputs = self.outputs.pop(session_id, [])
+        return len(outputs)
+
+    async def delete_events(self, session_id: str) -> int:
+        return 0  # MockSessionStore does not track events
+
+    async def delete_session(self, session_id: str) -> None:
+        self.sessions.pop(session_id, None)
+
 
 # ---------------------------------------------------------------------------
 # Phase 2 fixtures

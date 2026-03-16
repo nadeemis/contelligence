@@ -160,11 +160,11 @@ def _classify_approval_response(message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# DELETE /sessions/{session_id} -- cancel a session
+# DELETE /sessions/{session_id}/cancel -- cancel a session
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/sessions/{session_id}")
+@router.delete("/sessions/{session_id}/cancel")
 async def cancel_session(
     session_id: str,
     agent_service: PersistentAgentService = Depends(get_agent_service),
@@ -179,6 +179,47 @@ async def cancel_session(
         raise HTTPException(status_code=409, detail=str(exc))
     except Exception as exc:
         logger.exception("Unexpected error cancelling session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# DELETE /sessions/{session_id} -- permanently delete a session
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    agent_service: PersistentAgentService = Depends(get_agent_service),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Permanently delete a session and all related data.
+
+    Removes the session record, conversation turns, output artifacts,
+    events, and any associated blobs from storage. If the session is
+    currently active it will be cancelled first.
+
+    Requires authentication. Non-admin users may only delete their own
+    sessions.
+    """
+    try:
+        # RBAC: non-admin users can only delete their own sessions
+        if not user.is_admin:
+            record = await agent_service.store.get_session(session_id)
+            if record.user_id and record.user_id != user.oid:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to delete this session",
+                )
+
+        summary = await agent_service.delete_session(session_id=session_id)
+        return {"status": "deleted", **summary}
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error deleting session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
 
 

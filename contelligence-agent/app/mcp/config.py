@@ -53,7 +53,13 @@ def get_mcp_servers_config() -> dict[str, dict[str, Any]]:
                 "token": "",
             },
         },
-    }
+        "powerbi-remote": {
+                "type": "http",
+                "url": "https://api.fabric.microsoft.com/v1/mcp/powerbi"
+            }
+        }
+    
+    
 
     mode = "http" if azure_mcp_url else "stdio"
     logger.info("Azure MCP Server configured in %s mode", mode)

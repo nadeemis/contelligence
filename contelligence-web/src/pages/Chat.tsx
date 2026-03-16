@@ -35,6 +35,7 @@ const Chat = () => {
   const [autoScroll, setAutoScroll] = useState(true);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryFullyExpanded, setSummaryFullyExpanded] = useState(false);
+  const [instructError, setInstructError] = useState<string | null>(null);
 
   // ── Fetch available models from backend ──
   const { data: availableModels = [] } = useQuery({
@@ -86,6 +87,7 @@ const Chat = () => {
 
   const sendInstruction = useMutation({
     mutationFn: async (instruction: string) => {
+      setInstructError(null);
       setUserMessages((prev) => [...prev, instruction]);
       const options: { agents?: string[]; skill_ids?: string[]; model?: string } = {};
       if (selectedAgents.length > 0) options.agents = selectedAgents;
@@ -99,6 +101,9 @@ const Chat = () => {
       if (!urlSessionId) {
         navigate(`/chat/${res.session_id}`, { replace: true });
       }
+    },
+    onError: (error: Error) => {
+      setInstructError(error.message || "Failed to send instruction");
     },
   });
 
@@ -436,6 +441,18 @@ const Chat = () => {
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
               Sending...
+            </div>
+          )}
+
+          {instructError && (
+            <div className="flex gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/20">
+                <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+              </div>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 max-w-[80%]">
+                <p className="text-sm font-medium text-destructive">Failed to send instruction</p>
+                <p className="text-xs text-destructive/80 mt-1">{instructError}</p>
+              </div>
             </div>
           )}
         </CardContent>

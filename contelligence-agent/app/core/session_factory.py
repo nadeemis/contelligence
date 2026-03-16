@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from copilot import CopilotClient, Tool, PermissionHandler, CopilotSession as SDKSession
+from copilot import CopilotClient, Tool, ToolInvocation, ToolResult, PermissionHandler, CopilotSession as SDKSession
 
 from app.core.client_factory import CopilotClientFactory
 from app.core.tool_registry import ToolDefinition, ToolRegistry
@@ -80,6 +80,7 @@ class CopilotSession:
         try:
             await self.sdk_session.send({"prompt": instruction})
             await done.wait()
+            self.status = "completed"
         except Exception as exc:
             self.status = "error"
             await event_queue.put(
@@ -453,7 +454,7 @@ class CopilotSession:
                     "SDK session %s unrecognized event type: %s",
                     self.session_id, etype,
                 )
-                _emit("unknown_event", {"original_type": etype})
+                _emit("unknown_event", {"original_type": etype, "data": str(d)})
 
         self.sdk_session.on(on_event)
 
@@ -466,10 +467,11 @@ class CopilotSession:
         """Destroy the SDK session and mark as completed."""
         self.status = "completed"
         try:
-            await self.sdk_session.destroy()
+            await self.sdk_session.abort()
+            await self.sdk_session.disconnect()
         except Exception:
-            logger.warning("Error destroying SDK session %s", self.session_id)
-        logger.info("Session %s closed", self.session_id)
+            logger.warning("Error aborting/disconnecting SDK session %s", self.session_id)
+        logger.info(f"Session {self.session_id} aborted and disconnected")
 
 
 # ----------------------------------------------------------------------
@@ -637,13 +639,13 @@ class SessionFactory:
             config["custom_agents"] = custom_agents
 
         # Skill directories — merge factory defaults with session-specific
-        effective_skills = list(self.skill_directories)
+        # effective_skills = list(self.skill_directories)
+        # if skill_directories:
+            # for sd in skill_directories:
+            #     if sd not in effective_skills:
+            #         effective_skills.append(sd)
         if skill_directories:
-            for sd in skill_directories:
-                if sd not in effective_skills:
-                    effective_skills.append(sd)
-        if effective_skills:
-            config["skill_directories"] = effective_skills
+            config["skill_directories"] = skill_directories
 
         if disabled_skills:
             config["disabled_skills"] = disabled_skills
@@ -775,19 +777,32 @@ class SessionFactory:
         """Wrap a ``ToolDefinition`` as a ``copilot.Tool``.
 
         The wrapper bridges our ``(params, context) -> dict`` handler
-        signature to the SDK's ``handler(invocation) -> str`` convention.
+        signature to the SDK's ``handler(invocation) -> ToolResult`` convention.
         The tool context is captured in the closure so each invocation
         receives the shared connector instances.
         """
         context = self.tool_context
 
-        async def handler(invocation: dict[str, Any]) -> str:
-            parsed_args = invocation.get("arguments", {})
-            params = tool_def.parameters_model.model_validate(parsed_args)
-            result = tool_def.handler(params, context)
-            if asyncio.iscoroutine(result):
-                result = await result
-            return json.dumps(result, default=str)
+        async def handler(invocation: ToolInvocation) -> ToolResult:
+            try:
+                parsed_args = invocation.arguments or {}
+                params = tool_def.parameters_model.model_validate(parsed_args)
+                result = tool_def.handler(params, context)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                return ToolResult(
+                    text_result_for_llm=json.dumps(result, default=str),
+                    result_type="success",
+                    tool_telemetry={"tool_name": tool_def.name},
+                )
+            except Exception as exc:
+                logger.exception(f"Tool {tool_def.name} failed: {exc}")
+                return ToolResult(
+                    text_result_for_llm=json.dumps({"error": str(exc)}),
+                    result_type="failure",
+                    error=str(exc),
+                    tool_telemetry={"tool_name": tool_def.name},
+                )
 
         return Tool(
             name=tool_def.name,
@@ -851,7 +866,7 @@ class SessionFactory:
                 )
             )
             
-            logger.info(f"Tool {tool_name} completed in {duration_ms}ms for session {session_id}")
+            logger.debug(f"Tool {tool_name} completed in {duration_ms}ms for session {session_id}")
             # logger.debug(f"Tool {tool_name} post-use input data: {input_data}")
             
             return {}

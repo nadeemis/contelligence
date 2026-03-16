@@ -1,7 +1,7 @@
 services:
   copilot-cli:
     build:
-      context: ./infar/copilot-cli
+      context: ./infra/copilot-cli
       dockerfile: Dockerfile
     ports:
       - "4321:4321"
@@ -28,10 +28,13 @@ services:
       - contelligence-agent/.env
     volumes:
       - ./contelligence-agent:/app
+      - workspace-data:/workspace
     environment:
       - LOG_LEVEL=DEBUG
       - AZURE_MCP_SERVER_URL=http://azure-mcp:5008
       - CLI_URL=copilot-cli:4321
+      - WORKING_DIRECTORY=/workspace
+      - SHARED_SKILLS_DIRECTORY=/shared/skills
     depends_on:
       azure-mcp:
         condition: service_started

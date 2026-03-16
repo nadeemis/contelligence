@@ -8,8 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.core.tool_registry import define_tool, ToolDefinition
+from app.connectors.blob_connector import BlobConnectorAdapter
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 
 class ReadBlobParams(BaseModel):
@@ -64,50 +65,30 @@ class ReadBlobParams(BaseModel):
 )
 async def read_blob(params: ReadBlobParams, context: dict) -> dict:
     """Handle read_blob tool invocations."""
-    # Use a per-request connector when the caller specifies a different
-    # storage account; fall back to the default connector otherwise.
-    default_connector = context["blob"]
-    ad_hoc_connector = None
 
-    # Ad-hoc Azure connector only applies when running against Azure Blob
-    # Storage (the connector exposes _account_name). In local mode the
-    # LocalBlobConnectorAdapter has no _account_name.
-    default_account = getattr(default_connector, "_account_name", None)
-    if (
-        params.storage_account
-        and default_account
-        and params.storage_account != default_account
-    ):
-        from app.connectors.blob_connector import BlobConnectorAdapter
-
-        ad_hoc_connector = BlobConnectorAdapter(
+    connector = BlobConnectorAdapter(
             account_name=params.storage_account,
             credential_type="default_azure_credential",
         )
-        connector = ad_hoc_connector
-        logger.info(
-            "read_blob using ad-hoc connector for storage account '%s'",
-            params.storage_account,
-        )
-    else:
-        connector = default_connector
+    logger.info(
+        f"read_blob using connector for storage account '{params.storage_account}'"
+    )
 
     try:
         return await _execute(params, connector)
     finally:
-        if ad_hoc_connector is not None:
-            await ad_hoc_connector.close()
+        if connector is not None:
+            await connector.close()
 
 
-async def _execute(params: ReadBlobParams, connector: object) -> dict:
+async def _execute(params: ReadBlobParams, connector: BlobConnectorAdapter) -> dict:
     """Run the requested blob action against *connector*."""
     if params.action == "list":
         # If no container is specified, list containers instead of blobs
         if not params.container:
             containers = await connector.list_containers()
             logger.debug(
-                "read_blob list containers returned %d containers",
-                len(containers),
+                f"read_blob list containers returned {len(containers)} containers"
             )
             return {
                 "count": len(containers),
@@ -123,10 +104,7 @@ async def _execute(params: ReadBlobParams, connector: object) -> dict:
             max_results=params.max_results,
         )
         logger.debug(
-            "read_blob list container=%s prefix=%s returned %d blobs",
-            params.container,
-            params.prefix,
-            len(blobs),
+            f"read_blob list container={params.container} prefix={params.prefix} returned {len(blobs)} blobs"
         )
         return {
             "count": len(blobs),
@@ -144,10 +122,7 @@ async def _execute(params: ReadBlobParams, connector: object) -> dict:
         )
         content = raw.decode("utf-8", errors="replace")
         logger.debug(
-            "read_blob read container=%s path=%s size=%d",
-            params.container,
-            params.path,
-            len(raw),
+            f"read_blob read container={params.container} path={params.path} size={len(raw)}"
         )
         return {
             "path": params.path,
@@ -162,9 +137,7 @@ async def _execute(params: ReadBlobParams, connector: object) -> dict:
             container=params.container, path=params.path
         )
         logger.debug(
-            "read_blob metadata container=%s path=%s",
-            params.container,
-            params.path,
+            f"read_blob metadata container={params.container} path={params.path}"
         )
         return {
             "path": props.name,

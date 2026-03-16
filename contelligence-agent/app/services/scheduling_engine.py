@@ -234,8 +234,7 @@ class SchedulingEngine:
         now = datetime.now(timezone.utc)
 
         logger.info(
-            f"Firing schedule '{schedule.name}' ({schedule_id}) — reason: {trigger_reason}",
-            trigger_reason,
+            f"Firing schedule '{schedule.name}' ({schedule_id}) — reason: {trigger_reason}"
         )
 
         try:

@@ -212,3 +212,4 @@ gitignore*
 .copilot-session-state
 !.copilot-session-state/.gitkeep
 .workspace
+.shared-skills

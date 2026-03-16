@@ -20,7 +20,7 @@ from azure.identity.aio import (
     DefaultAzureCredential,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 _POWERBI_BASE = "https://api.powerbi.com/v1.0/myorg"
 _POWERBI_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
@@ -102,10 +102,15 @@ async def powerbi_request(
     }
     if json_body is not None:
         headers["Content-Type"] = "application/json"
-
+        
+    logger.debug(
+        f"Making Power BI API request to {url} with method {method} and params {params} and json body {json_body}"
+        )
+        
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.request(
             method, url, json=json_body, params=params or {}, headers=headers,
         )
         resp.raise_for_status()
+        
         return resp.json()

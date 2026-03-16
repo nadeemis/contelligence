@@ -11,7 +11,7 @@ from app.core.tool_registry import define_tool
 
 from ._client import powerbi_request
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 
 class ListDatasetsParams(BaseModel):
@@ -69,4 +69,4 @@ async def list_datasets(
 
     except Exception as exc:
         logger.exception("Failed to list datasets")
-        return {"error": str(exc)}
+        raise exc

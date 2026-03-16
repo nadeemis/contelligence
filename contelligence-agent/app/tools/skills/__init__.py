@@ -10,6 +10,5 @@ from __future__ import annotations
 
 from .read_skill import read_skill_tool
 from .read_skill_file import read_skill_file_tool
-from .run_skill_script import run_skill_script_tool
 
-SKILL_TOOLS = [read_skill_tool, read_skill_file_tool, run_skill_script_tool]
+SKILL_TOOLS = [read_skill_tool, read_skill_file_tool]

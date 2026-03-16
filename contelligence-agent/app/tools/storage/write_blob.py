@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.core.tool_registry import define_tool, ToolDefinition
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 
 class WriteBlobParams(BaseModel):
@@ -51,31 +51,18 @@ class WriteBlobParams(BaseModel):
 )
 async def write_blob(params: WriteBlobParams, context: dict) -> dict:
     """Handle write_blob tool invocations."""
-    default_connector = context["blob"]
-    ad_hoc_connector = None
+    
+    from app.connectors.blob_connector import BlobConnectorAdapter
 
-    # Ad-hoc Azure connector only applies when running against Azure Blob
-    # Storage (the connector exposes _account_name). In local mode the
-    # LocalBlobConnectorAdapter has no _account_name.
-    default_account = getattr(default_connector, "_account_name", None)
-    if (
-        params.storage_account
-        and default_account
-        and params.storage_account != default_account
-    ):
-        from app.connectors.blob_connector import BlobConnectorAdapter
-
-        ad_hoc_connector = BlobConnectorAdapter(
+    connector = BlobConnectorAdapter(
             account_name=params.storage_account,
             credential_type="default_azure_credential",
         )
-        connector = ad_hoc_connector
-        logger.info(
-            "write_blob using ad-hoc connector for storage account '%s'",
+        
+    logger.info(
+            "write_blob using connector for storage account '%s'",
             params.storage_account,
         )
-    else:
-        connector = default_connector
 
     try:
         data = params.content.encode("utf-8")
@@ -98,5 +85,5 @@ async def write_blob(params: WriteBlobParams, context: dict) -> dict:
             "path": f"{params.container}/{params.path}",
         }
     finally:
-        if ad_hoc_connector is not None:
-            await ad_hoc_connector.close()
+        if connector is not None:
+            await connector.close()

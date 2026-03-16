@@ -6,7 +6,7 @@
 # connectivity (see docs/guides/setup/backend-services.md).
 # ---------------------------------------------------------------------------
 
-FROM debian:bookworm-slim
+FROM python:3.12-slim
 
 ARG COPILOT_CLI_VERSION=latest
 ARG TARGETARCH

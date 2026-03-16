@@ -16,7 +16,7 @@ from app.core.tool_registry import define_tool
 
 from ._client import powerbi_request
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 
 class ExecuteDaxQueryParams(BaseModel):

@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator
 
-from app.connectors.blob_connector import BlobConnectorAdapter
+from app.connectors import BlobConnectorAdapter, LocalBlobConnectorAdapter
 from app.core.event_loop import run_agent_loop
 from app.core.session_factory import CopilotSession, SessionFactory
 from app.models.agent_models import AgentEvent, InstructOptions
@@ -38,6 +38,7 @@ from app.models.session_models import (
     ToolCallRecord,
 )
 from app.store.session_store import SessionStore
+from app.skills import SkillsManager
 from app.utils.sse import format_sse
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
@@ -188,12 +189,12 @@ class PersistentAgentService:
         session_factory: SessionFactory,
         session_store: SessionStore,
         system_prompt: str,
-        blob_connector: BlobConnectorAdapter,
+        blob_connector: BlobConnectorAdapter | LocalBlobConnectorAdapter,
         outputs_container: str = "agent-outputs",
         large_result_threshold: int = LARGE_RESULT_THRESHOLD_BYTES,
         approval_manager: Any | None = None,
         dynamic_registry: Any | None = None,
-        skills_manager: Any | None = None,
+        skills_manager: SkillsManager | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.store = session_store
@@ -219,10 +220,9 @@ class PersistentAgentService:
     def _build_system_prompt(self) -> str:
         """Build the system prompt.
 
-        Custom agents and skills are now passed directly to the SDK session
+        Custom agents and skills are passed directly to the SDK session
         via ``SessionConfig.custom_agents`` and ``SessionConfig.skill_directories``
-        respectively, so this method returns the base system prompt without
-        appending delegation sections or skills manifests.
+        respectively.
         """
         return self.system_prompt
 
@@ -264,7 +264,7 @@ class PersistentAgentService:
                 selected_agents,
                 mcp_servers=self.session_factory.mcp_servers,
             )
-        print(f"SDK custom agents config for session {session_id}: {json.dumps(sdk_custom_agents, indent=2)}")
+        # logger.debug(f"SDK custom agents config for session {session_id}: {json.dumps(sdk_custom_agents, indent=2)}")
         
         # ----------------------------------------------------------
         # Resolve skill directories for SDK native loading
@@ -275,10 +275,9 @@ class PersistentAgentService:
 
         if self.skills_manager is not None:
             try:
-                # Get filesystem directories where skills live
                 skill_directories = self.skills_manager.get_skill_directories()
 
-                # Track active skill IDs (from agents' bound_skills + explicit)
+                # Collect active skill IDs (from agents' bound_skills + explicit)
                 for agent_def in selected_agents.values():
                     bound = getattr(agent_def, "bound_skills", None) or []
                     for name in bound:
@@ -405,7 +404,7 @@ class PersistentAgentService:
 
             yield format_sse(event.type, event.data)
 
-            if event.type in ("session_complete", "session_error"):
+            if event.type in ("session_completed", "session_error"):
                 break
 
     # ------------------------------------------------------------------
@@ -480,13 +479,67 @@ class PersistentAgentService:
         if sdk_session:
             await sdk_session.close()
         if queue:
-            await queue.put(
+            queue.put_nowait(
                 AgentEvent(
                     type="session_error",
                     data={"error": "Session cancelled"},
                     session_id=session_id,
                 )
             )
+
+    # ------------------------------------------------------------------
+    # Public API — delete session and all related data
+    # ------------------------------------------------------------------
+
+    async def delete_session(self, session_id: str) -> dict[str, Any]:
+        """Delete a session and all related data.
+
+        1. Cancel the session if it is currently active in memory.
+        2. Retrieve output artifacts to identify blob storage references.
+        3. Delete blobs associated with the session (outputs + large results).
+        4. Delete all Cosmos DB data: turns, outputs, events, session doc.
+
+        Returns a summary dict with counts of deleted resources.
+        """
+        # 1. Verify the session exists in Cosmos (raises SessionNotFoundError)
+        await self.store.get_session(session_id)
+
+        # 2. Cancel if active in memory
+        if session_id in self.active_sessions:
+            await self.cancel(session_id)
+
+        # 3. Delete blob artifacts for this session
+        blobs_deleted = 0
+        try:
+            blobs_deleted = await self.blob_connector.delete_prefix(
+                self.outputs_container, f"{session_id}/",
+            )
+        except Exception:
+            logger.warning(
+                "Failed to delete blobs for session %s — continuing with Cosmos cleanup",
+                session_id,
+                exc_info=True,
+            )
+
+        # 4. Delete all Cosmos documents in parallel
+        turns_deleted, outputs_deleted, events_deleted = await asyncio.gather(
+            self.store.delete_turns(session_id),
+            self.store.delete_outputs(session_id),
+            self.store.delete_events(session_id),
+        )
+
+        # 5. Delete the session document itself
+        await self.store.delete_session(session_id)
+
+        summary = {
+            "session_id": session_id,
+            "turns_deleted": turns_deleted,
+            "outputs_deleted": outputs_deleted,
+            "events_deleted": events_deleted,
+            "blobs_deleted": blobs_deleted,
+        }
+        logger.info("Deleted session %s: %s", session_id, summary)
+        return summary
 
     # ------------------------------------------------------------------
     # Public API — session status
@@ -1030,7 +1083,7 @@ class PersistentAgentService:
         """
         etype = event.type
 
-        if etype == "session_shutdown":
+        if etype == "session_completed":
             # Extract final metrics from shutdown data when available
             model_metrics = event.data.get("model_metrics")
             if model_metrics and isinstance(model_metrics, dict):

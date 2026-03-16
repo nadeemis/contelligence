@@ -298,6 +298,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     if settings.COPILOT_CLI_PATH:
         base_options["cli_path"] = settings.COPILOT_CLI_PATH
     if settings.COPILOT_CLI_URL:
+        base_options["cli_path"] = ""  # Clear cli_path if URL is set, to avoid conflicts
         base_options["cli_url"] = settings.COPILOT_CLI_URL
 
     client_factory = CopilotClientFactory(
@@ -315,11 +316,6 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     from app.skills.store import SkillStore
     from app.skills.manager import SkillsManager
 
-    # Parse extra skill directories from comma-separated setting
-    extra_skill_dirs: list[str] = [
-        d.strip() for d in settings.EXTRA_SKILLS_DIRECTORIES.split(",") if d.strip()
-    ]
-    
     skill_store = SkillStore(
         storage_manager=app_storage_manager,
     )
@@ -328,7 +324,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     skills_manager = SkillsManager(
         skill_store=skill_store,
         blob_connector=app_storage_connector,
-        extra_skill_directories=extra_skill_dirs,
+        settings=settings,
     )
     app.state.skills_manager = skills_manager
 
@@ -350,6 +346,14 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
             logger.info("Synced %d built-in skill(s).", count)
     except Exception:
         logger.warning("Built-in skill sync failed — continuing.", exc_info=True)
+
+    # Materialize all active skills to the shared skills directory
+    try:
+        shared_count = await skills_manager.sync_skills_to_shared_directory()
+        if shared_count:
+            logger.info("Materialized %d skill(s) to shared directory.", shared_count)
+    except Exception:
+        logger.warning("Shared skills sync failed — continuing.", exc_info=True)
 
     # ------------------------------------------------------------------
     # Build Azure OpenAI provider config (BYOK) if endpoint is configured
@@ -380,7 +384,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         default_model=settings.COPILOT_MODEL,
         provider_config=provider_config,
         mcp_servers=mcp_config,
-        working_directory=settings.WORKING_DIRECTORY or None,
+        working_directory=settings.CLI_WORKING_DIRECTORY or None,
         skill_directories=skills_manager.get_skill_directories(),
     )
 
@@ -611,7 +615,10 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     logger.info(f"Startup complete. API available at http://{settings.API_HOST}:{settings.API_PORT}/{settings.API_VERSION}")
     logger.info(f"Registered tools: {', '.join(tool_registry.get_tool_names())}")
     logger.info(f"Registered MCP servers: {', '.join(mcp_config.keys()) if mcp_config else 'None'}")
-    logger.info(f"Extra skill directories: {', '.join(extra_skill_dirs) if extra_skill_dirs else 'None'}")
+    shared_dir = settings.AGENT_SHARED_SKILLS_DIRECTORY or '(not configured)'
+    cli_skills_dir = settings.CLI_SHARED_SKILLS_DIRECTORY or '(not configured)'
+    logger.info(f"Shared skills directory: {shared_dir}")
+    logger.info(f"CLI shared skills directory: {cli_skills_dir}")
     print("\n" + "-" * 75)
     print("\n" + "-" * 75)
     banner = (
