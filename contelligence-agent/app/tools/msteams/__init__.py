@@ -1,27 +1,29 @@
-"""Microsoft Graph / Teams tools for chat, channel, and calendar integration."""
+"""Microsoft Teams tools — browser-authenticated MS Graph access.
+
+All tools share a single ``TeamsGraphSession`` (see ``_graph_session.py``)
+that extracts a Graph bearer token from the user's live Teams browser
+session via Playwright + Edge.  No app registrations or client secrets
+are required.
+"""
 
 from __future__ import annotations
 
-from .list_chats import list_chats
+from .get_chats import get_chats
 from .get_chat_messages import get_chat_messages
-from .list_teams import list_teams
-from .list_channels import list_channels
+from .get_teams import get_teams
+from .get_channels import get_channels
 from .get_channel_messages import get_channel_messages
-from .get_channel_message_replies import get_channel_message_replies
-from .list_team_members import list_team_members
-from .list_calendar_events import list_calendar_events
-from .send_chat_message import send_chat_message
-from .send_channel_message import send_channel_message
+from .get_calendar import get_calendar
+from .get_calendar_event import get_calendar_event
+from .get_online_meeting import get_online_meeting
 
 MSTEAMS_TOOLS = [
-    list_chats,
+    get_chats,
     get_chat_messages,
-    list_teams,
-    list_channels,
+    get_teams,
+    get_channels,
     get_channel_messages,
-    get_channel_message_replies,
-    list_team_members,
-    list_calendar_events,
-    send_chat_message,
-    send_channel_message,
+    get_calendar,
+    get_calendar_event,
+    get_online_meeting,
 ]
