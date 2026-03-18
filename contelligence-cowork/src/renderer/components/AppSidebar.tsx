@@ -3,12 +3,10 @@ import {
   MessageSquare,
   List,
   CalendarClock,
-  FolderOpen,
   BarChart3,
   Bot,
   BookOpen,
   Settings,
-  Zap,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { AgentStatus } from "@/components/AgentStatus";
@@ -31,7 +29,6 @@ const navItems = [
   { title: "Chat", url: "/chat", icon: MessageSquare },
   { title: "Sessions", url: "/sessions", icon: List },
   { title: "Schedules", url: "/schedules", icon: CalendarClock },
-  { title: "Outputs", url: "/outputs", icon: FolderOpen },
   { title: "Metrics", url: "/metrics", icon: BarChart3 },
   { title: "Agents", url: "/agents", icon: Bot },
   { title: "Skills", url: "/skills", icon: BookOpen },

@@ -26,6 +26,7 @@ import logging
 import platform
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from playwright.async_api import (
     BrowserContext,
@@ -47,7 +48,7 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 BROWSER_PROFILE_DIR = Path.home() / ".contelligence" / "teams-browser-profile"
 
-_HEADLESS_READY_TIMEOUT = 30  # seconds
+_HEADLESS_READY_TIMEOUT = 60  # seconds
 _HEADED_READY_TIMEOUT = 120
 
 # Selector that indicates Teams has finished rendering.
@@ -88,21 +89,6 @@ async def close_session() -> None:
         if _singleton is not None:
             await _singleton.close()
             _singleton = None
-
-
-# ---------------------------------------------------------------------------
-# Edge helpers
-# ---------------------------------------------------------------------------
-
-def _edge_user_data_dir() -> Path | None:
-    system = platform.system()
-    if system == "Windows":
-        p = Path.home() / "AppData" / "Local" / "Microsoft" / "Edge" / "User Data"
-    elif system == "Darwin":
-        p = Path.home() / "Library" / "Application Support" / "Microsoft Edge"
-    else:
-        p = Path.home() / ".config" / "microsoft-edge"
-    return p if p.exists() else None
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +171,8 @@ class TeamsGraphSession:
         ``path`` is appended to ``https://graph.microsoft.com/v1.0``
         (include the leading slash, e.g. ``/me/chats``).
         """
+        
+        logger.debug(f"Graph GET {path} with params={params} and headers={headers}")
         return await self._graph_request("GET", path, params=params, headers=headers)
 
     async def graph_post(
@@ -196,9 +184,13 @@ class TeamsGraphSession:
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Execute a POST request against the MS Graph API."""
+        
+        logger.debug(f"Graph POST {path} with body={body}, params={params}, and headers={headers}")
         return await self._graph_request(
             "POST", path, body=body, params=params, headers=headers,
         )
+
+    
 
     # ── internals ────────────────────────────────────────────────────
 
@@ -318,6 +310,10 @@ class TeamsGraphSession:
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-first-run",
+                    # Suppress "Open msteams?" external-protocol popups
+                    "--disable-external-intent-requests",
+                    "--disable-features=ExternalProtocolDialog",
+                    "--autoplay-policy=no-user-gesture-required",
                 ],
             )
 
@@ -333,15 +329,33 @@ class TeamsGraphSession:
                 _HEADLESS_READY_TIMEOUT if headless else _HEADED_READY_TIMEOUT
             ) * 1000
 
-            await self._page.wait_for_selector(
-                _TEAMS_READY_SELECTOR, timeout=timeout,
-            )
+            # First launch can be slow; retry once on timeout.
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    await self._page.wait_for_selector(
+                        _TEAMS_READY_SELECTOR, timeout=timeout,
+                    )
+                    break
+                except Exception:
+                    if attempt < max_attempts:
+                        logger.info(
+                            "Teams ready selector timed out (attempt %d/%d) — "
+                            "reloading and retrying",
+                            attempt, max_attempts,
+                        )
+                        await self._page.wait_for_selector(
+                            _TEAMS_READY_SELECTOR, timeout=timeout,
+                        )
+                    else:
+                        raise
+
             # Let the page settle so API traffic fires
-            await asyncio.sleep(3)
+            await asyncio.sleep(4)
             return True
 
         except Exception as exc:
-            logger.warning("_try_connect(headless=%s) failed: %s", headless, exc)
+            logger.warning(f"_try_connect(headless={headless}) failed: {exc}")
             return False
 
     async def _teardown(self) -> None:
@@ -391,11 +405,11 @@ class TeamsGraphSession:
 
         await self._page.route("**/*graph.microsoft.com/**", _intercept)
 
-        for tab_label in ("Chat", "Teams", "Calendar"):
+        for tab_label in ("Chat", "Calendar", "Teams"):
             try:
                 btn = self._page.locator(f'button[aria-label^="{tab_label}"]')
                 await btn.click(timeout=5000)
-                await asyncio.sleep(2)
+                await asyncio.sleep(4)
             except Exception:
                 pass
 
@@ -403,8 +417,7 @@ class TeamsGraphSession:
 
         if intercepted:
             logger.info(
-                "Network interception found %d distinct Graph token(s)",
-                len(intercepted),
+                f"Network interception found {len(intercepted)} distinct Graph token(s)"
             )
 
         # --- Strategy 2: MSAL cache (collect ALL Graph tokens) ---

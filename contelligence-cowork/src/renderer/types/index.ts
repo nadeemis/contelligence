@@ -6,6 +6,9 @@ export interface SessionRecord {
   model: string;
   created_at: string;
   updated_at: string;
+  user_id: string;
+  options: InstructOptions;
+  trigger_reason: string | null;
   summary: string | null;
   schedule_id: string | null;
   metrics: SessionMetrics;
@@ -16,7 +19,14 @@ export interface SessionMetrics {
   total_duration_seconds: number;
   documents_processed: number;
   errors_encountered: number;
-  tokens_used: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
+  total_tokens_used: number;
+  model?: string | null;
+  cost?: number;
+  outputs_produced?: number;
 }
 
 export interface ConversationTurn {
@@ -139,6 +149,64 @@ export interface ActivityEvent {
   summary: string;
 }
 
+// ── Detailed Metrics ──────────────
+export interface SessionMetricsDetail {
+  token_usage_by_day: { date: string; input_tokens: number; output_tokens: number; cache_tokens: number; total_tokens: number; cost: number }[];
+  duration_by_day: { date: string; avg_duration: number; min_duration: number; max_duration: number; session_count: number }[];
+  status_by_day: { date: string; active: number; completed: number; failed: number; cancelled: number }[];
+  documents_by_day: { date: string; documents_processed: number; outputs_produced: number; errors: number }[];
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_tokens: number;
+  total_cost: number;
+  avg_duration: number;
+}
+
+export interface ToolCallMetricsDetail {
+  tool_usage: { tool_name: string; total_calls: number; success_count: number; error_count: number; avg_duration_ms: number }[];
+  tool_calls_by_day: { date: string; count: number }[];
+  tool_errors: { tool_name: string; error_count: number; last_error: string | null }[];
+  tool_duration: { tool_name: string; avg_duration_ms: number; min_duration_ms: number; max_duration_ms: number }[];
+  total_tool_calls: number;
+  total_tool_errors: number;
+}
+
+export interface ScheduleMetricsDetail {
+  schedule_overview: { name: string; status: string; total_runs: number; success_rate: number; last_run_at: string | null; next_run_at: string | null }[];
+  runs_by_day: { date: string; runs: number; successes: number; failures: number }[];
+  schedule_duration: { name: string; avg_duration: number; min_duration: number; max_duration: number }[];
+  schedule_reliability: { name: string; consecutive_failures: number; success_rate: number; total_runs: number }[];
+  total_runs: number;
+  total_successes: number;
+  total_failures: number;
+}
+
+export interface DetailedMetrics {
+  sessions: SessionMetricsDetail;
+  tool_calls: ToolCallMetricsDetail;
+  schedules: ScheduleMetricsDetail;
+}
+
+export interface DailyDetailMetrics {
+  date: string;
+  sessions: { id: string; instruction: string; status: string; duration: number; tool_calls: number; tokens: number; cost: number; created_at: string }[];
+  session_count: number;
+  completed_count: number;
+  failed_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost: number;
+  avg_duration: number;
+  min_duration: number;
+  max_duration: number;
+  tool_calls: { tool_name: string; status: string; duration_ms: number; session_id: string; error: string | null }[];
+  total_tool_calls: number;
+  total_tool_errors: number;
+  schedule_runs: { schedule_id: string; name: string; session_id: string; status: string; duration: number | null; trigger_reason: string }[];
+  total_schedule_runs: number;
+}
+
 // ── Admin ─────────────────────────
 export interface AdminSettings {
   default_model: string;
@@ -174,6 +242,39 @@ export interface InstructOptions {
 export interface HealthCheck {
   healthy: boolean;
   detail?: string;
+}
+
+export interface McpServerHealth {
+  status: string;
+  latency_ms?: number;
+  error?: string;
+}
+
+export interface TokenHealth {
+  status: string;
+  expires_at?: string;
+}
+
+export interface HealthStatus {
+  status: string;
+  service: string;
+  version: string;
+  instance_id: string;
+  active_sessions?: number;
+  is_scheduler_leader?: boolean;
+  token_health?: TokenHealth;
+  mcp_servers?: Record<string, McpServerHealth>;
+}
+
+export interface EnvironmentInfo {
+  storage: Record<string, string>;
+  server: Record<string, string | number>;
+  quotas: Record<string, number>;
+  rate_limits: Record<string, number>;
+  cache_retention: Record<string, boolean | number>;
+  services: Record<string, boolean>;
+  models: Record<string, string>;
+  scaling: Record<string, number>;
 }
 
 // ── Agents ────────────────────────

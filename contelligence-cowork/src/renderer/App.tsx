@@ -15,7 +15,6 @@ const SessionDetailPage = lazy(() => import("@/pages/SessionDetailPage"));
 const SchedulesPage = lazy(() => import("@/pages/Schedules"));
 const ScheduleFormPage = lazy(() => import("@/pages/ScheduleFormPage"));
 const ScheduleDetailPage = lazy(() => import("@/pages/ScheduleDetailPage"));
-const OutputsPage = lazy(() => import("@/pages/Outputs"));
 const MetricsPage = lazy(() => import("@/pages/Metrics"));
 const SettingsPage = lazy(() => import("@/pages/Settings"));
 const AgentsPage = lazy(() => import("@/pages/Agents"));
@@ -66,7 +65,6 @@ const App = () => (
               <Route path="/schedules/new" element={<ScheduleFormPage />} />
               <Route path="/schedules/:id" element={<ScheduleDetailPage />} />
               <Route path="/schedules/:id/edit" element={<ScheduleFormPage />} />
-              <Route path="/outputs" element={<OutputsPage />} />
               <Route path="/metrics" element={<MetricsPage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/agents/new" element={<AgentEditorPage />} />

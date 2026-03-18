@@ -21,7 +21,7 @@ import { Search, Filter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { agentApi } from "@/lib/api";
 import { useSearchParam } from "@/hooks/useSearchParam";
-import { formatDuration, statusIcon } from "@/lib/format";
+import { formatDate, formatDuration, statusIcon } from "@/lib/format";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   completed: { label: "Done", className: "bg-success/10 text-success border-success/20" },
@@ -146,6 +146,7 @@ const Sessions = () => {
                 <TableHead className="text-muted-foreground">ID</TableHead>
                 <TableHead className="text-muted-foreground">Instruction</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
+                <TableHead className="text-muted-foreground">Started/Updated</TableHead>
                 <TableHead className="text-muted-foreground text-right">Tools</TableHead>
                 <TableHead className="text-muted-foreground text-right">Duration</TableHead>
               </TableRow>
@@ -187,6 +188,9 @@ const Sessions = () => {
                           <Badge variant="outline" className={cfg.className + " text-xs"}>
                             {statusIcon(s.status)} {cfg.label}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDate(s.updated_at ?? s.created_at)}
                         </TableCell>
                         <TableCell className="text-right text-muted-foreground">
                           {s.metrics.total_tool_calls}

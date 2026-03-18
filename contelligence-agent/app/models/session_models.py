@@ -61,7 +61,13 @@ class SessionMetrics(BaseModel):
 
     total_duration_seconds: float = 0.0     # Wall clock time from start to end
     total_tool_calls: int = 0               # Number of tool invocations
+    input_tokens: int = 0                   # LLM input tokens
+    output_tokens: int = 0                  # LLM output tokens
+    cache_read_tokens: int = 0              # Tokens read from cache (not billed)
+    cache_write_tokens: int = 0             # Tokens written to cache (not billed)
     total_tokens_used: int = 0              # LLM token consumption (input + output)
+    model: str | None = None                # LLM model used (e.g., "claude-sonnet-4.6")
+    cost: float | None = 0.0                # Estimated cost in USD
     documents_processed: int = 0            # Files handled by extraction tools
     errors_encountered: int = 0             # Errors (may be recovered from)
     outputs_produced: int = 0               # Artifacts written to storage
@@ -83,7 +89,6 @@ class ToolCallRecord(BaseModel):
     tool_name: str                                  # e.g., "extract_pdf", "read_blob"
     parameters: dict[str, Any] = Field(default_factory=dict)  # Input parameters
     result: dict[str, Any] | None = None            # Output (may be truncated if large)
-    result_blob_ref: str | None = None              # Blob reference if result was offloaded
     started_at: datetime                            # When the tool call began
     completed_at: datetime | None = None            # When the tool call finished
     duration_ms: int | None = None                  # Execution time in milliseconds
@@ -230,35 +235,3 @@ class SessionEvent(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)  # Event payload
     timestamp: datetime                             # When the event occurred
 
-
-# ---------------------------------------------------------------------------
-# Output Artifact (Cosmos container: outputs, partition key: /session_id)
-# ---------------------------------------------------------------------------
-
-
-class OutputArtifact(BaseModel):
-    """Reference to an output produced by the session.
-
-    Stored in the ``outputs`` Cosmos container, partitioned by ``session_id``.
-
-    ``storage_type`` determines how the artifact is downloaded:
-    - ``"blob"``  → stream from Blob Storage
-    - ``"cosmos"`` → read from Cosmos DB
-    - ``"search_index"`` → return metadata only
-    """
-
-    id: str                                         # Artifact ID (UUID)
-    session_id: str                                 # Parent session (partition key)
-    name: str                                       # Human-readable name
-    description: str                                # What this artifact contains
-    artifact_type: str                              # "json", "csv", "pdf", "blob_ref", "search_index"
-
-    # Where the output lives
-    storage_type: str                               # "cosmos", "blob", "search_index"
-    storage_location: str                           # Container/path or index name
-
-    # Size and metadata
-    size_bytes: int | None = None                   # File size (for blob artifacts)
-    record_count: int | None = None                 # Number of records (for structured data)
-    content_type: str | None = None                 # MIME type
-    created_at: datetime                            # When the artifact was created

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -21,7 +22,6 @@ class AppSettings(BaseSettings):
     # Storage mode: "azure" for cloud deployment, "local" for standalone desktop
     STORAGE_MODE: str = "local"
     LOCAL_DATA_DIR: str = ""       # Local data directory (SQLite DB, blobs, logs)
-    LOCAL_BLOBS_DIR: str = ""      # Local blob storage directory (defaults to LOCAL_DATA_DIR/blobs)
 
     # Working directory & skills
     CLI_WORKING_DIRECTORY: str = ""      # CLI working directory (e.g. /workspace in Docker)
@@ -148,6 +148,22 @@ class AppSettings(BaseSettings):
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
+    
+    def app_data_dir(self) -> Path:
+        """Return a platform-appropriate app data directory."""
+        data_dir = Path(self.LOCAL_DATA_DIR) if self.LOCAL_DATA_DIR else None
+        if data_dir is not None:
+            return data_dir
+        
+        
+        import sys
+
+        if sys.platform == "win32":
+            return Path(os.environ.get("APPDATA", Path.home())) / "Contelligence"
+        elif sys.platform == "darwin":
+            return Path.home() / "Library" / "Application Support" / "Contelligence"
+        else:
+            return Path.home() / ".contelligence"
 
 
 @lru_cache

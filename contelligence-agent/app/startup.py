@@ -116,20 +116,6 @@ async def on_startup(app: FastAPI) -> None:
         await _cleanup_on_startup_failure(app)
         raise
 
-
-def _default_data_dir() -> Path:
-    """Return a platform-appropriate app data directory."""
-    import sys
-
-    if sys.platform == "win32":
-        return Path(os.environ.get("APPDATA", Path.home())) / "Contelligence"
-    
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "Contelligence"
-    
-    return Path.home() / ".contelligence"
-
-
 async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN001
     """Inner startup logic; separated so the caller can catch and clean up."""
     global _extraction_cache, _token_manager, _scheduler, _scheduling_engine, _run_tracker  # noqa: PLW0603
@@ -154,10 +140,10 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         from app.store.storage_manager import SQLiteStorageManager
 
         # Resolve data directory
-        data_dir = Path(settings.LOCAL_DATA_DIR) if settings.LOCAL_DATA_DIR else _default_data_dir()
+        data_dir = settings.app_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
 
-        blobs_dir = settings.LOCAL_BLOBS_DIR or str(data_dir / "blobs")
+        blobs_dir = str(data_dir / "blobs")
         db_path = str(data_dir / "contelligence.db")
 
         logger.info(f"Local mode — data dir: {data_dir}, db: {db_path}")

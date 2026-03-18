@@ -30,7 +30,6 @@ from app.models.agent_models import AgentEvent, InstructOptions
 from app.models.exceptions import SessionNotFoundError
 from app.models.session_models import (
     ConversationTurn,
-    OutputArtifact,
     SessionEvent,
     SessionMetrics,
     SessionRecord,
@@ -708,114 +707,114 @@ class PersistentAgentService:
         logger.info(f"Session {session_id} resumed")
         return session_id
 
-    # ------------------------------------------------------------------
-    # Large result offloading (WS-4)
-    # ------------------------------------------------------------------
+    # # ------------------------------------------------------------------
+    # # Large result offloading (WS-4)
+    # # ------------------------------------------------------------------
 
-    async def _store_large_result(
-        self,
-        session_id: str,
-        tool_name: str,
-        result: dict[str, Any],
-    ) -> str:
-        """Offload a large tool result to Blob Storage, returning the blob reference."""
-        timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-")
-        blob_path = f"{session_id}/tool_results/{tool_name}_{timestamp}.json"
+    # async def _store_large_result(
+    #     self,
+    #     session_id: str,
+    #     tool_name: str,
+    #     result: dict[str, Any],
+    # ) -> str:
+    #     """Offload a large tool result to Blob Storage, returning the blob reference."""
+    #     timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-")
+    #     blob_path = f"{session_id}/tool_results/{tool_name}_{timestamp}.json"
 
-        await self.blob_connector.upload_blob(
-            container=self.outputs_container,
-            path=blob_path,
-            data=json.dumps(result, default=str).encode("utf-8"),
-            content_type="application/json",
-        )
+    #     await self.blob_connector.upload_blob(
+    #         container=self.outputs_container,
+    #         path=blob_path,
+    #         data=json.dumps(result, default=str).encode("utf-8"),
+    #         content_type="application/json",
+    #     )
 
-        return f"{self.outputs_container}/{blob_path}"
+    #     return f"{self.outputs_container}/{blob_path}"
 
-    async def fetch_large_result(self, blob_ref: str) -> dict[str, Any]:
-        """Fetch an offloaded tool result from Blob Storage."""
-        parts = blob_ref.split("/", 1)
-        container = parts[0]
-        path = parts[1]
-        data = await self.blob_connector.download_blob(container, path)
-        return json.loads(data)
+    # async def fetch_large_result(self, blob_ref: str) -> dict[str, Any]:
+    #     """Fetch an offloaded tool result from Blob Storage."""
+    #     parts = blob_ref.split("/", 1)
+    #     container = parts[0]
+    #     path = parts[1]
+    #     data = await self.blob_connector.download_blob(container, path)
+    #     return json.loads(data)
 
     # ------------------------------------------------------------------
     # Output artifact tracking (WS-5)
     # ------------------------------------------------------------------
 
-    async def _register_output(
-        self,
-        session_id: str,
-        tool_name: str,
-        params: dict[str, Any],
-        result: dict[str, Any],
-    ) -> None:
-        """Register an output artifact when a write tool completes."""
-        if tool_name not in WRITE_TOOLS:
-            return
+    # async def _register_output(
+    #     self,
+    #     session_id: str,
+    #     tool_name: str,
+    #     params: dict[str, Any],
+    #     result: dict[str, Any],
+    # ) -> None:
+    #     """Register an output artifact when a write tool completes."""
+    #     if tool_name not in WRITE_TOOLS:
+    #         return
 
-        artifact: OutputArtifact | None = None
-        now = datetime.now(timezone.utc)
+    #     artifact: OutputArtifact | None = None
+    #     now = datetime.now(timezone.utc)
 
-        if tool_name == "write_blob":
-            content = params.get("data", params.get("content", ""))
-            size = len(content.encode("utf-8")) if isinstance(content, str) else len(content)
-            artifact = OutputArtifact(
-                id=str(uuid.uuid4()),
-                session_id=session_id,
-                name=params.get("path", "unknown").split("/")[-1],
-                description=f"Written to {params.get('container', '')}/{params.get('path', '')}",
-                artifact_type=self._infer_type(
-                    params.get("content_type", "application/json")
-                ),
-                storage_type="blob",
-                storage_location=f"{params.get('container', '')}/{params.get('path', '')}",
-                size_bytes=size,
-                content_type=params.get("content_type", "application/json"),
-                created_at=now,
-            )
+    #     if tool_name == "write_blob":
+    #         content = params.get("data", params.get("content", ""))
+    #         size = len(content.encode("utf-8")) if isinstance(content, str) else len(content)
+    #         artifact = OutputArtifact(
+    #             id=str(uuid.uuid4()),
+    #             session_id=session_id,
+    #             name=params.get("path", "unknown").split("/")[-1],
+    #             description=f"Written to {params.get('container', '')}/{params.get('path', '')}",
+    #             artifact_type=self._infer_type(
+    #                 params.get("content_type", "application/json")
+    #             ),
+    #             storage_type="blob",
+    #             storage_location=f"{params.get('container', '')}/{params.get('path', '')}",
+    #             size_bytes=size,
+    #             content_type=params.get("content_type", "application/json"),
+    #             created_at=now,
+    #         )
 
-        elif tool_name == "upload_to_search":
-            artifact = OutputArtifact(
-                id=str(uuid.uuid4()),
-                session_id=session_id,
-                name=f"{params.get('index', 'unknown')} index upload",
-                description=(
-                    f"Uploaded {result.get('uploaded', result.get('succeeded', 0))} "
-                    f"docs to '{params.get('index', 'unknown')}'"
-                ),
-                artifact_type="search_index",
-                storage_type="search_index",
-                storage_location=params.get("index", "unknown"),
-                record_count=result.get("uploaded", result.get("succeeded", 0)),
-                created_at=now,
-            )
+    #     elif tool_name == "upload_to_search":
+    #         artifact = OutputArtifact(
+    #             id=str(uuid.uuid4()),
+    #             session_id=session_id,
+    #             name=f"{params.get('index', 'unknown')} index upload",
+    #             description=(
+    #                 f"Uploaded {result.get('uploaded', result.get('succeeded', 0))} "
+    #                 f"docs to '{params.get('index', 'unknown')}'"
+    #             ),
+    #             artifact_type="search_index",
+    #             storage_type="search_index",
+    #             storage_location=params.get("index", "unknown"),
+    #             record_count=result.get("uploaded", result.get("succeeded", 0)),
+    #             created_at=now,
+    #         )
 
-        elif tool_name == "upsert_cosmos":
-            doc = params.get("document", {})
-            artifact = OutputArtifact(
-                id=str(uuid.uuid4()),
-                session_id=session_id,
-                name=f"Cosmos upsert: {params.get('container', 'unknown')}",
-                description=(
-                    f"Upserted document to "
-                    f"{params.get('database', 'default')}/{params.get('container', 'unknown')}"
-                ),
-                artifact_type="json",
-                storage_type="cosmos",
-                storage_location=(
-                    f"{params.get('database', 'default')}/"
-                    f"{params.get('container', 'unknown')}/"
-                    f"{doc.get('id', 'unknown')}"
-                ),
-                created_at=now,
-            )
+    #     elif tool_name == "upsert_cosmos":
+    #         doc = params.get("document", {})
+    #         artifact = OutputArtifact(
+    #             id=str(uuid.uuid4()),
+    #             session_id=session_id,
+    #             name=f"Cosmos upsert: {params.get('container', 'unknown')}",
+    #             description=(
+    #                 f"Upserted document to "
+    #                 f"{params.get('database', 'default')}/{params.get('container', 'unknown')}"
+    #             ),
+    #             artifact_type="json",
+    #             storage_type="cosmos",
+    #             storage_location=(
+    #                 f"{params.get('database', 'default')}/"
+    #                 f"{params.get('container', 'unknown')}/"
+    #                 f"{doc.get('id', 'unknown')}"
+    #             ),
+    #             created_at=now,
+    #         )
 
-        if artifact is not None:
-            await self.store.save_output(artifact)
-            await self.store.update_session_metrics(
-                session_id, outputs_produced=1
-            )
+    #     if artifact is not None:
+    #         await self.store.save_output(artifact)
+    #         await self.store.update_session_metrics(
+    #             session_id, outputs_produced=1
+    #         )
 
     @staticmethod
     def _infer_type(content_type: str) -> str:
@@ -1055,14 +1054,21 @@ class PersistentAgentService:
             if total > 0:
                 try:
                     record = await self.store.get_session(session_id)
+                    record.metrics.input_tokens += int(input_tokens)
+                    record.metrics.output_tokens += int(output_tokens)
+                    record.metrics.cache_read_tokens += int(event.data.get("cache_read_tokens") or 0)
+                    record.metrics.cache_write_tokens += int(event.data.get("cache_write_tokens") or 0)
+                    record.metrics.model = event.data.get("model", None)
+                    if record.metrics.cost is None:
+                        record.metrics.cost = 0.0
+                    record.metrics.cost += float(event.data.get("cost", 0.0) or 0.0)
+                    
                     record.metrics.total_tokens_used += int(total)
                     record.updated_at = datetime.now(timezone.utc)
                     await self.store.save_session(record)
                 except Exception:
-                    logger.debug(
-                        "Could not persist assistant_usage for session %s",
-                        session_id,
-                    )
+                    logger.exception(f"Error while persisting assistant_usage for session {session_id}")
+                    logger.debug(f"Could not persist assistant_usage for session {session_id}")
 
         # All assistant events → events container
         await self._save_session_event(session_id, event, "assistant")
@@ -1262,25 +1268,23 @@ class PersistentAgentService:
         """Persist a tool execution complete event (called from hooks)."""
         now = datetime.now(timezone.utc)
         stored_result = result
-        result_ref: str | None = None
+        # result_ref: str | None = None
 
         # Check for large result offloading
         if result is not None:
             result_json = json.dumps(result, default=str)
             if len(result_json.encode("utf-8")) > self.large_result_threshold:
-                result_ref = await self._store_large_result(
-                    session_id, tool_name, result
-                )
+                # result_ref = await self._store_large_result(
+                #     session_id, tool_name, result
+                # )
                 stored_result = {
-                    "_ref": result_ref,
-                    "_note": "Result stored in blob (too large for inline storage)",
+                    "_note": "Result too large for inline storage.",
                 }
 
         await self.store.update_tool_call(
             session_id=session_id,
             tool_name=tool_name,
             result=stored_result,
-            result_blob_ref=result_ref,
             completed_at=now,
             status="success",
         )
@@ -1291,21 +1295,21 @@ class PersistentAgentService:
                 session_id, documents_processed=1
             )
 
-        # Register output artifacts for write tools
-        if tool_name in WRITE_TOOLS and result is not None:
-            # We need the original params — retrieve from the turn record
-            turns = await self.store.get_turns(session_id)
-            for turn in reversed(turns):
-                if (
-                    turn.role == "tool"
-                    and turn.tool_call
-                    and turn.tool_call.tool_name == tool_name
-                    and turn.tool_call.status == "success"
-                ):
-                    await self._register_output(
-                        session_id, tool_name, turn.tool_call.parameters, result
-                    )
-                    break
+        # # Register output artifacts for write tools
+        # if tool_name in WRITE_TOOLS and result is not None:
+        #     # We need the original params — retrieve from the turn record
+        #     turns = await self.store.get_turns(session_id)
+        #     for turn in reversed(turns):
+        #         if (
+        #             turn.role == "tool"
+        #             and turn.tool_call
+        #             and turn.tool_call.tool_name == tool_name
+        #             and turn.tool_call.status == "success"
+        #         ):
+        #             await self._register_output(
+        #                 session_id, tool_name, turn.tool_call.parameters, result
+        #             )
+        #             break
 
     async def persist_tool_error(
         self,
@@ -1318,7 +1322,6 @@ class PersistentAgentService:
             session_id=session_id,
             tool_name=tool_name,
             result=None,
-            result_blob_ref=None,
             completed_at=datetime.now(timezone.utc),
             status="error",
             error=error,

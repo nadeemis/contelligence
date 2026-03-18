@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,13 +14,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Play, FileOutput, Wrench, Clock, FileText, AlertCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, Play, FileOutput, Wrench, Clock, FileText, AlertCircle, Trash2, User, Brain, Hash, DollarSign, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { MarkdownContent } from "@/components/MarkdownContent";
+import { ChatMessage } from "@/components/chat/ChatMessage";
+import { ToolResultCard } from "@/components/chat/ToolResultCard";
 import { toast } from "sonner";
 import { agentApi } from "@/lib/api";
 import { formatDate, formatDuration, formatBytes, statusIcon } from "@/lib/format";
 import type { SessionRecord, ConversationTurn, OutputArtifact } from "@/types";
+import type { AgentEventUnion } from "@/types/agent-events";
 
-function SessionHeader({ session }: { session?: SessionRecord }) {
+function SessionHeader({ session, actions }: { session?: SessionRecord; actions?: React.ReactNode }) {
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [summaryOverflows, setSummaryOverflows] = useState(false);
+  const summaryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!summaryExpanded && summaryRef.current) {
+      setSummaryOverflows(summaryRef.current.scrollHeight > summaryRef.current.clientHeight);
+    }
+  }, [session?.summary, summaryExpanded]);
+
   if (!session) {
     return (
       <div className="space-y-3">
@@ -51,37 +65,88 @@ function SessionHeader({ session }: { session?: SessionRecord }) {
 
       <p className="text-sm text-muted-foreground">{session.instruction}</p>
 
-      <div className="flex items-center gap-6 text-sm text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          <Wrench className="h-3.5 w-3.5" />
-          <span>{session.metrics.total_tool_calls} tool calls</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Clock className="h-3.5 w-3.5" />
-          <span>{formatDuration(session.metrics.total_duration_seconds)}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <FileText className="h-3.5 w-3.5" />
-          <span>{session.metrics.documents_processed} docs</span>
-        </div>
-        {session.metrics.errors_encountered > 0 && (
-          <div className="flex items-center gap-1.5 text-destructive">
-            <AlertCircle className="h-3.5 w-3.5" />
-            <span>{session.metrics.errors_encountered} errors</span>
+      <div className="space-y-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5">
+            <Wrench className="h-3.5 w-3.5" />
+            <span>{session.metrics.total_tool_calls} tool calls</span>
           </div>
-        )}
-        <span>Started {formatDate(session.created_at)}</span>
-        {session.schedule_id && (
-          <Link to={`/schedules/${session.schedule_id}`} className="text-primary hover:underline">
-            Schedule: {session.schedule_id.slice(0, 8)}
-          </Link>
-        )}
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            <span>{formatDuration(session.metrics.total_duration_seconds)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Brain className="h-3.5 w-3.5" />
+            <span>Model {session.metrics.model}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            <span>{session.metrics.documents_processed} docs</span>
+          </div>
+          {session.metrics.errors_encountered > 0 && (
+            <div className="flex items-center gap-1.5 text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span>{session.metrics.errors_encountered} errors</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            <span>{formatDate(session.created_at)}</span>
+          </div>
+          {session.schedule_id && (
+            <Link to={`/schedules/${session.schedule_id}`} className="text-primary hover:underline">
+              Schedule: {session.schedule_id.slice(0, 8)}
+            </Link>
+          )}
+          {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5">
+            <ArrowDownToLine className="h-3.5 w-3.5" />
+            <span>{(session.metrics.input_tokens ?? 0).toLocaleString()} input tokens</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <ArrowUpFromLine className="h-3.5 w-3.5" />
+            <span>{(session.metrics.output_tokens ?? 0).toLocaleString()} output tokens</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Hash className="h-3.5 w-3.5" />
+            <span>{(session.metrics.total_tokens_used).toLocaleString()} total tokens</span>
+          </div>
+          {session.metrics.cost != null && (
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5" />
+              <span>${session.metrics.cost.toFixed(4)} cost</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {session.summary && (
         <Card className="bg-secondary/50 border-border">
-          <CardContent className="p-3">
-            <p className="text-sm text-foreground">{session.summary}</p>
+          <CardHeader>
+            <CardTitle className="text-foreground">Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            <div
+              ref={summaryRef}
+              className={`relative ${summaryExpanded ? "" : "max-h-[15rem] overflow-hidden"}`}
+            >
+              <MarkdownContent className="text-sm text-foreground">{session.summary}</MarkdownContent>
+              {!summaryExpanded && summaryOverflows && (
+                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-secondary/50 to-transparent" />
+              )}
+            </div>
+            {summaryOverflows && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-7 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setSummaryExpanded(!summaryExpanded)}
+              >
+                {summaryExpanded ? "Show less" : "Show more"}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -90,12 +155,6 @@ function SessionHeader({ session }: { session?: SessionRecord }) {
 }
 
 function ConversationLog({ turns }: { turns: ConversationTurn[] }) {
-  const roleStyles: Record<string, { icon: string; bg: string }> = {
-    user: { icon: "👤", bg: "bg-accent/10" },
-    assistant: { icon: "🤖", bg: "bg-primary/10" },
-    tool: { icon: "🔧", bg: "bg-secondary" },
-  };
-
   return (
     <Card className="bg-card border-border">
       <CardHeader>
@@ -106,37 +165,60 @@ function ConversationLog({ turns }: { turns: ConversationTurn[] }) {
           <p className="text-sm text-muted-foreground text-center py-4">No conversation turns</p>
         ) : (
           turns.map((turn) => {
-            const style = roleStyles[turn.role] ?? roleStyles.assistant;
-            return (
-              <div key={turn.sequence} className={`rounded-lg p-3 ${style.bg}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span>{style.icon}</span>
-                  <span className="text-xs font-medium text-muted-foreground uppercase">{turn.role}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">{formatDate(turn.timestamp)}</span>
-                </div>
-                {turn.prompt && (
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{turn.prompt}</p>
-                )}
-                {turn.content && (
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{turn.content}</p>
-                )}
-                {turn.reasoning && (
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{turn.reasoning}</p>
-                )}
-                {turn.tool_call && (
-                  <div className="mt-2 rounded bg-background/50 p-2 font-mono text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-primary font-medium">{turn.tool_call.tool_name}</span>
-                      <span className={turn.tool_call.status === "success" ? "text-success" : "text-destructive"}>
-                        {turn.tool_call.status === "success" ? "✅" : "❌"}
-                      </span>
-                      <span className="text-muted-foreground">{turn.tool_call.duration_ms}ms</span>
-                    </div>
-                    <p className="text-muted-foreground mt-1">{JSON.stringify(turn.tool_call.result, null, 2)}</p>
+            const key = `turn-${turn.sequence}`;
+
+            if (turn.role === "user") {
+              if (!turn.prompt) return null;
+              return (
+                <div key={key} className="flex gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/20">
+                    <User className="h-3.5 w-3.5 text-accent" />
                   </div>
-                )}
-              </div>
-            );
+                  <div className="rounded-lg bg-secondary p-3 max-w-[80%]">
+                    <p className="text-sm text-foreground">{turn.prompt}</p>
+                  </div>
+                </div>
+              );
+            }
+
+            if (turn.role === "tool" && turn.tool_call) {
+              return (
+                <ToolResultCard
+                  key={key}
+                  callId={turn.tool_call.tool_name}
+                  toolName={turn.tool_call.tool_name}
+                  result={turn.tool_call.error ?? turn.tool_call.result ?? ""}
+                  parameters={turn.tool_call.parameters}
+                  timestamp={turn.timestamp}
+                  startedAt={turn.tool_call.started_at}
+                  completedAt={turn.tool_call.completed_at}
+                  durationMs={turn.tool_call.duration_ms}
+                  sessionId={turn.session_id}
+                  sequence={turn.sequence}
+                />
+              );
+            }
+
+            if (turn.role === "assistant") {
+              return (
+                <React.Fragment key={key}>
+                  {turn.reasoning && (
+                    <ChatMessage
+                      event={{ type: "thinking", content: turn.reasoning, timestamp: turn.timestamp, payload: {} } as AgentEventUnion}
+                      onApprove={() => {}}
+                    />
+                  )}
+                  {turn.content && (
+                    <ChatMessage
+                      event={{ type: "message", content: turn.content, timestamp: turn.timestamp, payload: {} } as AgentEventUnion}
+                      onApprove={() => {}}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            }
+
+            return null;
           })
         )}
       </CardContent>
@@ -144,46 +226,6 @@ function ConversationLog({ turns }: { turns: ConversationTurn[] }) {
   );
 }
 
-function OutputList({ outputs }: { outputs: OutputArtifact[] }) {
-  return (
-    <Card className="bg-card border-border">
-      <CardHeader>
-        <CardTitle className="text-foreground">Output Artifacts</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="divide-y divide-border">
-          {outputs.map((output) => (
-            <div key={output.id} className="flex items-center justify-between py-3">
-              <div className="flex items-center gap-3">
-                <FileOutput className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <span className="text-sm font-mono text-foreground">{output.file_name}</span>
-                  <p className="text-xs text-muted-foreground">{output.content_type} • {formatBytes(output.size_bytes)}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{formatDate(output.created_at)}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() =>
-                    window.open(
-                      `/api/agent/sessions/${output.session_id}/outputs/${output.id}/download`,
-                      "_blank"
-                    )
-                  }
-                >
-                  Download
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 const SessionDetailPage = () => {
   const { id } = useParams();
@@ -208,12 +250,6 @@ const SessionDetailPage = () => {
       session?.status === "active" ? 3_000 : false,
   });
 
-  const { data: outputs } = useQuery({
-    queryKey: ["session-outputs", id],
-    queryFn: () => agentApi.getSessionOutputs(id!),
-    enabled: !!id && session?.status === "completed",
-  });
-
   const deleteMutation = useMutation({
     mutationFn: () => agentApi.deleteSession(id!),
     onSuccess: () => {
@@ -232,25 +268,26 @@ const SessionDetailPage = () => {
         <ArrowLeft className="h-4 w-4" /> Back to Sessions
       </Link>
 
-      <SessionHeader session={session} />
-
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <Button asChild variant="outline" className="border-border">
-            <Link to={`/chat/${id}`}>
-              <Play className="h-3.5 w-3.5 mr-1.5" /> Resume Session
-            </Link>
-          </Button>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-border text-destructive hover:text-destructive"
-          onClick={() => { setDeleteConfirm(""); setDeleteOpen(true); }}
-        >
-          <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Session
-        </Button>
-      </div>
+      <SessionHeader
+        session={session}
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm" className="border-border">
+              <Link to={`/chat/${id}`}>
+                <Play className="h-3.5 w-3.5 mr-1.5" /> Resume Session
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-border text-destructive hover:text-destructive"
+              onClick={() => { setDeleteConfirm(""); setDeleteOpen(true); }}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Session
+            </Button>
+          </>
+        }
+      />
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -294,7 +331,6 @@ const SessionDetailPage = () => {
 
       <ConversationLog turns={logs ?? []} />
 
-      {outputs && outputs.length > 0 && <OutputList outputs={outputs} />}
     </div>
   );
 };

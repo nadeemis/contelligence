@@ -353,109 +353,10 @@ async def get_session_logs(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-# ---------------------------------------------------------------------------
-# GET /sessions/{session_id}/outputs -- list output artifacts
-# ---------------------------------------------------------------------------
-
-
-@router.get("/sessions/{session_id}/outputs", response_model=SessionOutputsResponse)
-async def get_session_outputs(
-    session_id: str,
-    store: SessionStore = Depends(get_session_store),
-) -> SessionOutputsResponse:
-    """Return all output artifacts for a session."""
-    try:
-        # Verify session exists
-        await store.get_session(session_id)
-        outputs = await store.get_outputs(session_id)
-        return SessionOutputsResponse(
-            session_id=session_id,
-            outputs=[o.model_dump(mode="json") for o in outputs],
-        )
-    except SessionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
-        logger.exception("Unexpected error getting outputs for session %s", session_id)
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# GET /sessions/{session_id}/outputs/{output_id}/download -- download an output
-# ---------------------------------------------------------------------------
-
-
-@router.get("/sessions/{session_id}/outputs/{output_id}/download")
-async def download_output(
-    session_id: str,
-    output_id: str,
-    store: SessionStore = Depends(get_session_store),
-    blob_connector: BlobConnectorAdapter = Depends(get_blob_connector),
-) -> Response:
-    """Download a specific output artifact.
-
-    Behaviour varies by ``storage_type``:
-
-    * **blob** — streams the raw file bytes from Blob Storage.
-    * **cosmos** — performs a point-read and returns JSON.
-    * **search_index** — returns artifact metadata only (no download).
-    """
-    try:
-        artifact = await store.get_output(session_id, output_id)
-
-        if artifact.storage_type == "blob":
-            parts = artifact.storage_location.split("/", 1)
-            container = parts[0]
-            path = parts[1] if len(parts) > 1 else ""
-            data = await blob_connector.download_blob(container, path)
-            return Response(
-                content=data,
-                media_type=artifact.content_type or "application/octet-stream",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{artifact.name}"',
-                },
-            )
-
-        elif artifact.storage_type == "cosmos":
-            # For Cosmos-stored artifacts, return the artifact metadata as JSON
-            return JSONResponse(
-                content=artifact.model_dump(mode="json"),
-            )
-
-        elif artifact.storage_type == "search_index":
-            # Search index artifacts — return metadata only
-            return JSONResponse(
-                content={
-                    "id": artifact.id,
-                    "name": artifact.name,
-                    "description": artifact.description,
-                    "storage_type": artifact.storage_type,
-                    "storage_location": artifact.storage_location,
-                    "record_count": artifact.record_count,
-                    "message": "Search index artifacts cannot be downloaded directly.",
-                },
-            )
-
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported storage_type: {artifact.storage_type}",
-            )
-
-    except SessionNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception(
-            "Error downloading output %s for session %s", output_id, session_id,
-        )
-        raise HTTPException(status_code=500, detail=str(exc))
-
 
 # ---------------------------------------------------------------------------
 # GET /models -- list available models
 # ---------------------------------------------------------------------------
-
 
 @router.get("/models")
 async def list_models(

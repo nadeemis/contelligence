@@ -6,7 +6,7 @@ import type {
   SubagentCompletedEvent,
 } from "@/types/agent-events";
 import { ApprovalCard } from "./ApprovalCard";
-import { MarkdownContent } from "./MarkdownContent";
+import { MarkdownContent } from "@/components/MarkdownContent";
 
 interface ChatMessageProps {
   event: AgentEventUnion;

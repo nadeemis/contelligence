@@ -7,11 +7,15 @@ import type {
   CreateScheduleRequest,
   UpdateScheduleRequest,
   DashboardMetrics,
+  DetailedMetrics,
+  DailyDetailMetrics,
   ActivityEvent,
   AdminSettings,
   TokenStatus,
   TokenValidationResult,
   HealthCheck,
+  HealthStatus,
+  EnvironmentInfo,
   AgentDefinitionRecord,
   AgentSummary,
   CreateAgentRequest,
@@ -98,10 +102,6 @@ export const agentApi = {
     apiFetch<{ session_id: string; turns: ConversationTurn[] }>(`/agent/sessions/${id}/logs${toQueryString(params)}`)
       .then((r) => r.turns),
 
-  getSessionOutputs: (id: string) =>
-    apiFetch<{ session_id: string; outputs: OutputArtifact[] }>(`/agent/sessions/${id}/outputs`)
-      .then((r) => r.outputs),
-
   reply: (sessionId: string, message: string) =>
     apiFetch<void>(`/agent/sessions/${sessionId}/reply`, {
       method: "POST",
@@ -165,6 +165,12 @@ export const dashboardApi = {
   metrics: (since?: string) =>
     apiFetch<DashboardMetrics>(`/dashboard/metrics${since ? `?since=${since}` : ""}`),
 
+  detailedMetrics: (days = 30) =>
+    apiFetch<DetailedMetrics>(`/dashboard/metrics/detailed?days=${days}`),
+
+  dailyMetrics: (date: string) =>
+    apiFetch<DailyDetailMetrics>(`/dashboard/metrics/daily?date=${date}`),
+
   activity: (limit = 50) =>
     apiFetch<ActivityEvent[]>(`/dashboard/activity?limit=${limit}`),
 };
@@ -197,6 +203,15 @@ export const adminApi = {
 
   getHealth: () =>
     apiFetch<Record<string, HealthCheck>>("/admin/health"),
+};
+
+// ── Health API ───────────────────────────
+export const healthApi = {
+  status: () =>
+    apiFetch<HealthStatus>("/health"),
+
+  environment: () =>
+    apiFetch<EnvironmentInfo>("/health/environment"),
 };
 
 // Export for SSE streaming URL construction

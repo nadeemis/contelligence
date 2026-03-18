@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ChatAgentPicker } from "@/components/ChatAgentPicker";
 import { ChatSkillPicker } from "@/components/ChatSkillPicker";
 import { ChatMessage } from "@/components/chat/ChatMessage";
-import { MarkdownContent } from "@/components/chat/MarkdownContent";
+import { MarkdownContent } from "@/components/MarkdownContent";
 import { ToolResultCard } from "@/components/chat/ToolResultCard";
 import { TurnBox } from "@/components/chat/TurnBox";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
