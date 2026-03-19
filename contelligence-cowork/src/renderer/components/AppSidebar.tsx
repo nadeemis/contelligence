@@ -23,6 +23,7 @@ import {
   SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import contelligenceLogo from "/Contelligence-logo.png";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -45,7 +46,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <img src="/Contelligence-logo.png" alt="Contelligence Logo" />
+            <img src={contelligenceLogo} alt="Contelligence Logo" />
           </div>
           {!collapsed && (
             <span className="text-lg font-bold text-foreground tracking-tight font-display">

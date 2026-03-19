@@ -44,20 +44,24 @@ from playwright.async_api import (
     async_playwright,
 )
 
+from app.settings import get_settings, AppSettings
+
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
+settings: AppSettings = get_settings()
+
 # Persistent browser profile — separate from any Teams profile.
-BROWSER_PROFILE_DIR = Path.home() / ".contelligence" / "sharepoint-browser-profile"
+BROWSER_PROFILE_DIR = settings.app_data_dir() / "sharepoint-browser-profile"
 
 # Directory for diagnostic screenshots when auth fails in headless mode.
-SCREENSHOT_DIR = Path.home() / ".contelligence" / "sharepoint-screenshots"
+SCREENSHOT_DIR = settings.app_data_dir() / "sharepoint-screenshots"
 
 # Timeouts (seconds)
-_HEADLESS_READY_TIMEOUT = 30
+_HEADLESS_READY_TIMEOUT = 60
 _HEADED_READY_TIMEOUT = 120
 
 # URL fragments that indicate SharePoint is loaded and authenticated.

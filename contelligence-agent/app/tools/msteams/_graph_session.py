@@ -37,16 +37,20 @@ from playwright.async_api import (
     async_playwright,
 )
 
+from app.settings import get_settings, AppSettings
+
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
+settings: AppSettings = get_settings()
+
 TEAMS_URL = "https://teams.microsoft.com/v2/"
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
-BROWSER_PROFILE_DIR = Path.home() / ".contelligence" / "teams-browser-profile"
+BROWSER_PROFILE_DIR = settings.app_data_dir() / "teams-browser-profile"
 
 _HEADLESS_READY_TIMEOUT = 60  # seconds
 _HEADED_READY_TIMEOUT = 120
@@ -67,6 +71,7 @@ _AUTH_URL_PATTERNS = (
 # ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
+
 
 _singleton: TeamsGraphSession | None = None
 _singleton_lock = asyncio.Lock()
@@ -409,7 +414,11 @@ class TeamsGraphSession:
             try:
                 btn = self._page.locator(f'button[aria-label^="{tab_label}"]')
                 await btn.click(timeout=5000)
-                await asyncio.sleep(4)
+                # wait 7 seconds for the first tab
+                if tab_label == "Chat":
+                    await asyncio.sleep(7)
+                else:
+                    await asyncio.sleep(5)  # wait for potential Graph calls to fire
             except Exception:
                 pass
 

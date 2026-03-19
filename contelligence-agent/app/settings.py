@@ -155,15 +155,7 @@ class AppSettings(BaseSettings):
         if data_dir is not None:
             return data_dir
         
-        
-        import sys
-
-        if sys.platform == "win32":
-            return Path(os.environ.get("APPDATA", Path.home())) / "Contelligence"
-        elif sys.platform == "darwin":
-            return Path.home() / "Library" / "Application Support" / "Contelligence"
-        else:
-            return Path.home() / ".contelligence"
+        return Path.home() / ".contelligence"
 
 
 @lru_cache

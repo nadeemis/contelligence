@@ -12,8 +12,6 @@ from ..core.tool_registry import ToolRegistry
 from .extraction import EXTRACTION_TOOLS
 from .storage import STORAGE_TOOLS
 from .ai import AI_TOOLS
-# from .agents import AGENT_TOOLS
-# from .skills import SKILL_TOOLS
 from .devops import DEVOPS_TOOLS
 from .powerbi import POWERBI_TOOLS
 from .desktop import DESKTOP_TOOLS

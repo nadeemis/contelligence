@@ -46,7 +46,7 @@ RUN case "${TARGETARCH}" in \
 RUN mkdir -p /root/.copilot/session-state
 
 # Workspace directory mount point (optional, for persistent workspaces)
-RUN mkdir -p /workspace
+RUN mkdir -p /contelligence
 
 EXPOSE 4321
 

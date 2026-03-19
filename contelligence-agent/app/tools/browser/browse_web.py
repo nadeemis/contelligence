@@ -24,6 +24,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.core.tool_registry import define_tool
+from app.settings import get_settings, AppSettings
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,9 @@ _active_page: Any = None
 # Edge profile directory helpers
 # ---------------------------------------------------------------------------
 
+settings: AppSettings = get_settings()
+
+
 def _edge_source_profile_dir() -> Path:
     """Return the real Edge user-data directory for the current OS."""
     system = platform.system()
@@ -57,7 +61,7 @@ def _contelligence_profile_dir() -> Path:
     Lives under ``~/.contelligence/browser-profile`` so it never
     conflicts with a running Edge instance.
     """
-    return Path.home() / ".contelligence" / "browser-profile"
+    return settings.app_data_dir() / "browser-profile"
 
 
 def _seed_profile_from_edge(dest: Path) -> None:

@@ -9,7 +9,7 @@ services:
       - COPILOT_GITHUB_TOKEN=${COPILOT_GITHUB_TOKEN}
     volumes:
       - copilot-session-data:/root/.copilot/session-state
-      - workspace-data:/workspace
+      - workspace:/contelligence
     restart: always
     healthcheck:
       test: ["CMD", "copilot", "--version"]
@@ -28,13 +28,13 @@ services:
       - contelligence-agent/.env
     volumes:
       - ./contelligence-agent:/app
-      - workspace-data:/workspace
+      - workspace:/contelligence
     environment:
       - LOG_LEVEL=DEBUG
       - AZURE_MCP_SERVER_URL=http://azure-mcp:5008
       - CLI_URL=copilot-cli:4321
-      - WORKING_DIRECTORY=/workspace
-      - SHARED_SKILLS_DIRECTORY=/shared/skills
+      - CLI_WORKING_DIRECTORY=/contelligence
+      - CLI_SHARED_SKILLS_DIRECTORY=/contelligence/skills
     depends_on:
       azure-mcp:
         condition: service_started
@@ -58,10 +58,10 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /Users/nadeemis/Projects/contelligence/.copilot-session-state
-  workspace-data:
+      device: ${HOME}/.contelligence/.copilot-session-state
+  workspace:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /Users/nadeemis/Projects/contelligence/.workspace
+      device: ${HOME}/.contelligence

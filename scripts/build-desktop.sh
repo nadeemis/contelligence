@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Build the Contelligence backend into a standalone binary with PyInstaller,
-# then package the Electron app with the backend bundled inside.
+# then package the Cowork app with the backend bundled inside.
 #
 # Usage:
-#   ./scripts/build-desktop.sh          # build both backend + electron
+#   ./scripts/build-desktop.sh          # build both backend + cowork
 #   ./scripts/build-desktop.sh backend  # build backend only
-#   ./scripts/build-desktop.sh electron # build electron only (expects backend already built)
+#   ./scripts/build-desktop.sh cowork # build cowork only (expects backend already built)
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENT_DIR="${REPO_ROOT}/contelligence-agent"
-ELECTRON_DIR="${REPO_ROOT}/contelligence-electron"
+COWORK_DIR="${REPO_ROOT}/contelligence-cowork"
 BACKEND_DIST="${AGENT_DIR}/dist/contelligence-agent"
 
 build_backend() {
@@ -28,15 +28,15 @@ build_backend() {
   echo "==> Backend built: ${BACKEND_DIST}"
 }
 
-build_electron() {
-  echo "==> Packaging Electron app..."
-  cd "${ELECTRON_DIR}"
+build_cowork() {
+  echo "==> Packaging Cowork app..."
+  cd "${COWORK_DIR}"
 
-  # Copy built backend into electron resources
-  local target="${ELECTRON_DIR}/resources/backend"
+  # Copy built backend into cowork resources
+  local target="${COWORK_DIR}/resources/backend"
   rm -rf "${target}"
   if [ -d "${BACKEND_DIST}" ]; then
-    echo "    Copying backend into electron resources..."
+    echo "    Copying backend into cowork resources..."
     mkdir -p "${target}"
     cp -R "${BACKEND_DIST}/." "${target}/"
   else
@@ -47,22 +47,22 @@ build_electron() {
 
   npm install
   npm run make
-  echo "==> Electron app packaged — check ${ELECTRON_DIR}/out/"
+  echo "==> Cowork app packaged — check ${COWORK_DIR}/out/"
 }
 
 case "${1:-all}" in
   backend)
     build_backend
     ;;
-  electron)
-    build_electron
+  cowork)
+    build_cowork
     ;;
   all)
     build_backend
-    build_electron
+    build_cowork
     ;;
   *)
-    echo "Usage: $0 [backend|electron|all]"
+    echo "Usage: $0 [backend|cowork|all]"
     exit 1
     ;;
 esac

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -89,12 +90,24 @@ settings: AppSettings = get_settings()
 app = create_app(settings)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", 
-                reload=settings.LOG_LEVEL == "DEBUG",
-                host=settings.API_HOST,
-                port=settings.API_PORT,
-                workers=1,
-                use_colors=True,
-                log_config=None,
-                log_level=settings.LOG_LEVEL == "DEBUG" and "debug" or "info",
-    )
+    if getattr(sys, 'frozen', False):
+        # PyInstaller frozen binary — pass app object directly
+        # (import string "main:app" doesn't work when code is frozen)
+        uvicorn.run(app,
+                    host=settings.API_HOST,
+                    port=settings.API_PORT,
+                    workers=1,
+                    use_colors=True,
+                    log_config=None,
+                    log_level="debug" if settings.LOG_LEVEL == "DEBUG" else "info",
+        )
+    else:
+        uvicorn.run("main:app", 
+                    reload=settings.LOG_LEVEL == "DEBUG",
+                    host=settings.API_HOST,
+                    port=settings.API_PORT,
+                    workers=1,
+                    use_colors=True,
+                    log_config=None,
+                    log_level="debug" if settings.LOG_LEVEL == "DEBUG" else "info",
+        )

@@ -287,14 +287,23 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         base_options["cli_path"] = ""  # Clear cli_path if URL is set, to avoid conflicts
         base_options["cli_url"] = settings.COPILOT_CLI_URL
 
+    logger.debug(f"Starting Copilot client using cli_path: {settings.COPILOT_CLI_PATH}" \
+            if settings.COPILOT_CLI_PATH else f"Starting Copilot client using cli_url: {settings.COPILOT_CLI_URL}" \
+            if settings.COPILOT_CLI_URL else "Starting Copilot client with default CLI path resolution.")
+    
     client_factory = CopilotClientFactory(
         base_options=base_options,
         github_token=resolved_github_token,
     )
-    await client_factory.start()
+    try:
+        await client_factory.start()
+        logger.info("Copilot SDK client started via factory.")
+    except RuntimeError as exc:
+        logger.warning(
+            "Copilot CLI startup failed — AI features will be unavailable: %s",
+            exc,
+        )
     app.state.client_factory = client_factory
-
-    logger.info("Copilot SDK client started via factory.")
 
     # ------------------------------------------------------------------
     # Skills Integration — SkillStore + SkillsManager
@@ -375,7 +384,14 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     )
 
     # Preflight — fail fast if the SDK client can't complete a round-trip
-    await session_factory.verify(full_probe=True)
+    try:
+        await session_factory.verify(full_probe=True)
+    except Exception as exc:
+        logger.warning(
+            "Copilot SDK preflight check failed — agent chat will be "
+            "unavailable until a valid Copilot CLI and token are configured: %s",
+            exc,
+        )
 
     app.state.session_factory = session_factory
     

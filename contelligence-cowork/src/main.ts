@@ -93,23 +93,79 @@ function findAvailablePort(preferred = 8081): Promise<number> {
   });
 }
 
-/** Ensure a default .env exists in the user data directory. */
+/** Base directory for all Contelligence user data (~/.contelligence). */
+function getContelligenceHome(): string {
+  return path.join(app.getPath('home'), '.contelligence');
+}
+
+/**
+ * Resolve a usable PATH for child processes.
+ * When the app is launched via Finder / double-click on macOS, process.env.PATH
+ * is minimal (/usr/bin:/bin:/usr/sbin:/sbin). The Copilot CLI and other tools
+ * need Homebrew, nvm, and similar directories. We recover the user's login
+ * shell PATH so subprocesses work the same as from a terminal.
+ */
+function getShellPath(): string {
+  const fallbackPath = process.env.PATH || '';
+
+  // Only needed on macOS/Linux GUI launches
+  if (process.platform === 'win32') return fallbackPath;
+
+  try {
+    // Ask the user's login shell for its PATH
+    const shell = process.env.SHELL || '/bin/zsh';
+    const result = execSync(`${shell} -ilc 'echo $PATH'`, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 5_000,
+      encoding: 'utf-8',
+    }).trim();
+    if (result) return result;
+  } catch {
+    // Shell extraction failed — fall through
+  }
+
+  // Manual fallback: common macOS/Linux directories
+  const home = app.getPath('home');
+  const extras = [
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    path.join(home, '.nvm/versions/node') , // nvm (glob handled below)
+    path.join(home, '.local/bin'),
+    '/usr/local/sbin',
+  ];
+  const merged = [...new Set([...extras, ...fallbackPath.split(path.delimiter)])];
+  return merged.filter(Boolean).join(path.delimiter);
+}
+
+/** Ensure a default .env exists in the Contelligence home directory. */
 function ensureDefaultEnvFile(): string {
-  const envPath = path.join(app.getPath('userData'), '.env');
+  const contelligenceHome = getContelligenceHome();
+  const envPath = path.join(contelligenceHome, '.env');
   if (!fs.existsSync(envPath)) {
     const defaults = [
       '# Contelligence local-mode configuration',
       '# Generated on first launch — edit as needed',
       '',
-      'STORAGE_MODE=local',
-      `LOCAL_DATA_DIR=${app.getPath('userData')}`,
-      `SHARED_SKILLS_DIRECTORY=${path.join(app.getPath('userData'), 'skills')}`,
+      '# Server',
+      'LOG_LEVEL=DEBUG',
+      'SESSION_TIMEOUT_MINUTES=60',
       '',
-      '# GitHub Copilot token (required for AI features)',
+      '# Storage',
+      `LOCAL_DATA_DIR=${path.join(contelligenceHome, 'data')}`,
+      '',
+      '# Skills',
+      `AGENT_SHARED_SKILLS_DIRECTORY=${path.join(contelligenceHome, 'skills')}`,
+      '',
+      '# Auth (disabled in local mode)',
+      'AUTH_ENABLED=false',
+      '',
+      '# GitHub Copilot SDK',
+      `CLI_WORKING_DIRECTORY=${path.join(contelligenceHome)}`,
+      `CLI_SHARED_SKILLS_DIRECTORY=${path.join(contelligenceHome, 'skills')}`,
       '# GITHUB_COPILOT_TOKEN=ghp_...',
-      '',
-      '# Logging',
-      'LOG_LEVEL=INFO',
+      '# COPILOT_CLI_PATH is auto-detected on startup',
+      'COPILOT_MODEL=claude-opus-4.6',
       '',
     ].join('\n');
     fs.mkdirSync(path.dirname(envPath), { recursive: true });
@@ -122,17 +178,40 @@ function ensureDefaultEnvFile(): string {
 async function startBackend(): Promise<void> {
   backendPort = await findAvailablePort(8081);
   const envFile = ensureDefaultEnvFile();
+  const contelligenceHome = getContelligenceHome();
 
   const backendPath = getBackendPath();
 
   // Build child env — merge the .env file with current env
   const childEnv: Record<string, string> = { ...process.env } as Record<string, string>;
+
+  // Ensure a full PATH so the Copilot CLI and its dependencies (node, git, etc.)
+  // are reachable even when the app is launched from Finder.
+  childEnv['PATH'] = getShellPath();
+  // Also add the directory containing the Copilot CLI itself to PATH
+  if (copilotCliPath) {
+    const cliDir = path.dirname(copilotCliPath);
+    if (!childEnv['PATH'].split(path.delimiter).includes(cliDir)) {
+      childEnv['PATH'] = `${cliDir}${path.delimiter}${childEnv['PATH']}`;
+    }
+  }
+
+  childEnv['API_VERSION'] = 'v1';
   childEnv['API_PORT'] = String(backendPort);
   childEnv['API_HOST'] = '127.0.0.1';
+  childEnv['LOG_LEVEL'] = 'DEBUG';
+  childEnv['SESSION_TIMEOUT_MINUTES'] = '60';
   childEnv['STORAGE_MODE'] = 'local';
-  childEnv['LOCAL_DATA_DIR'] = app.getPath('userData');
-  childEnv['SHARED_SKILLS_DIRECTORY'] = path.join(app.getPath('userData'), 'skills');
-
+  childEnv['LOCAL_DATA_DIR'] = path.join(contelligenceHome, 'data');
+  childEnv['AGENT_SHARED_SKILLS_DIRECTORY'] = path.join(contelligenceHome, 'skills');
+  childEnv['AUTH_ENABLED'] = 'false';
+  childEnv['CLI_WORKING_DIRECTORY'] = path.join(contelligenceHome);
+  childEnv['CLI_SHARED_SKILLS_DIRECTORY'] = path.join(contelligenceHome, 'skills');
+  if (copilotCliPath) {
+    childEnv['COPILOT_CLI_PATH'] = copilotCliPath;
+  }
+  childEnv['COPILOT_MODEL'] = 'claude-opus-4.6';
+  
   // Parse .env file into child env (simple KEY=VALUE, skip comments)
   if (fs.existsSync(envFile)) {
     const lines = fs.readFileSync(envFile, 'utf-8').split('\n');
@@ -211,6 +290,71 @@ function stopBackend(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Copilot CLI detection
+// ---------------------------------------------------------------------------
+
+let copilotCliPath = '';
+
+/** Search well-known locations for the Copilot CLI binary. */
+function findCopilotCliPath(): string {
+  const home = app.getPath('home');
+
+  // Candidate paths — checked in order of preference
+  const candidates: string[] = [
+    // VS Code extension (macOS / Linux)
+    path.join(home, 'Library', 'Application Support', 'Code', 'User',
+      'globalStorage', 'github.copilot-chat', 'copilotCli', 'copilot'),
+    // VS Code extension (Linux alternate)
+    path.join(home, '.config', 'Code', 'User',
+      'globalStorage', 'github.copilot-chat', 'copilotCli', 'copilot'),
+    // VS Code extension (Windows)
+    path.join(home, 'AppData', 'Roaming', 'Code', 'User',
+      'globalStorage', 'github.copilot-chat', 'copilotCli', 'copilot.exe'),
+  ];
+
+  // Check explicit candidates first
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  // Fall back to PATH lookup
+  try {
+    const result = execSync(
+      process.platform === 'win32' ? 'where copilot' : 'which copilot',
+      { stdio: 'pipe', timeout: 5_000 },
+    ).toString().trim().split('\n')[0];
+    if (result && fs.existsSync(result)) return result;
+  } catch {
+    // not on PATH
+  }
+
+  return '';
+}
+
+interface CopilotCliResult {
+  found: boolean;
+  path: string;
+  error?: string;
+}
+
+/** Check whether the Copilot CLI is available. */
+function checkCopilotCli(): CopilotCliResult {
+  const cliPath = findCopilotCliPath();
+  if (cliPath) {
+    return { found: true, path: cliPath };
+  }
+  return {
+    found: false,
+    path: '',
+    error:
+      'GitHub Copilot CLI was not found on this system.\n\n' +
+      'AI agent features require the Copilot CLI.\n' +
+      'Install it via the GitHub Copilot Chat extension in VS Code, ' +
+      'then run "copilot" in a terminal to verify.',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Azure login verification
 // ---------------------------------------------------------------------------
 
@@ -259,7 +403,6 @@ const createWindow = () => {
       nodeIntegration: false,
       sandbox: true,
     },
-    icon: path.join(__dirname, '../public/Contelligence-logo.png'),
   });
 
   // Show window once ready to avoid white flash
@@ -399,7 +542,28 @@ app.on('ready', async () => {
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
 
-  // Always verify Azure login
+  // Verify Copilot CLI is available
+  const copilotStatus = checkCopilotCli();
+  if (copilotStatus.found) {
+    copilotCliPath = copilotStatus.path;
+    console.log(`[main] Copilot CLI found at ${copilotCliPath}`);
+  } else {
+    console.warn('[main] Copilot CLI not found');
+    dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'GitHub Copilot CLI Not Found',
+      message: 'GitHub Copilot CLI was not found on this system.',
+      detail:
+        'AI agent features will be unavailable without it.\n\n' +
+        'To install:\n' +
+        '1. Install the GitHub Copilot Chat extension in VS Code\n' +
+        '2. Run "copilot" in a terminal to verify installation\n' +
+        '3. Restart this app',
+      buttons: ['Continue Anyway'],
+    });
+  }
+
+  // Verify Azure login
   const azureStatus = checkAzureLogin();
   if (!azureStatus.loggedIn) {
     dialog.showMessageBoxSync({
@@ -429,11 +593,6 @@ app.on('ready', async () => {
       app.quit();
       return;
     }
-  }
-
-  if (process.platform === 'darwin') {
-    const image = nativeImage.createFromPath(path.join(__dirname, '../public/Contelligence-logo.png'));
-    app.dock.setIcon(image);
   }
 
   createWindow();
