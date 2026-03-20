@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import platform
 from typing import TYPE_CHECKING
 
 from pathlib import Path
@@ -281,8 +282,18 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         "auto_restart": True,
     }
 
-    if settings.COPILOT_CLI_PATH:
-        base_options["cli_path"] = settings.COPILOT_CLI_PATH
+    cli_path = settings.COPILOT_CLI_PATH
+    # On Windows, npm global installs create a shell-script wrapper without
+    # an extension that cannot be launched by subprocess directly.  The real
+    # Windows launcher is the .cmd sibling.
+    if cli_path and platform.system() == "Windows":
+        from pathlib import Path as _P
+        _cli = _P(cli_path)
+        if not _cli.suffix and _cli.with_suffix(".cmd").exists():
+            cli_path = str(_cli.with_suffix(".cmd"))
+
+    if cli_path:
+        base_options["cli_path"] = cli_path
     if settings.COPILOT_CLI_URL:
         base_options["cli_path"] = ""  # Clear cli_path if URL is set, to avoid conflicts
         base_options["cli_url"] = settings.COPILOT_CLI_URL

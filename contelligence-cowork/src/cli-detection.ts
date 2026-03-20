@@ -20,6 +20,8 @@ export interface CopilotCliResult {
 function findCopilotCliPath(): string {
   const home = app.getPath('home');
 
+  const isWindows = process.platform === 'win32';
+
   const candidates: string[] = [
     // VS Code extension (macOS / Linux)
     path.join(home, 'Library', 'Application Support', 'Code', 'User',
@@ -30,7 +32,8 @@ function findCopilotCliPath(): string {
     // VS Code extension (Windows)
     path.join(home, 'AppData', 'Roaming', 'Code', 'User',
       'globalStorage', 'github.copilot-chat', 'copilotCli', 'copilot.exe'),
-    path.join(home, 'AppData', 'Roaming', 'npm', 'copilot'),
+    // npm global install — use .cmd wrapper on Windows
+    path.join(home, 'AppData', 'Roaming', 'npm', isWindows ? 'copilot.cmd' : 'copilot'),
   ];
 
   for (const p of candidates) {
