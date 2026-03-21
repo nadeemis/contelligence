@@ -35,10 +35,9 @@ def agent_def_to_sdk_config(
     
     # Resolve MCP servers for this agent from the full config
     agent_mcp: dict[str, Any] = {}
-    if agent_def.mcp_servers and mcp_servers:
-        for key in agent_def.mcp_servers:
-            if key in mcp_servers:
-                agent_mcp[key] = mcp_servers[key]
+    if mcp_servers:
+        for key in mcp_servers.keys():
+            agent_mcp[key] = mcp_servers[key]
         
     config: CustomAgentConfig = CustomAgentConfig(
         name=agent_def.name,

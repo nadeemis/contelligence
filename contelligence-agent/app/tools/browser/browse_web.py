@@ -217,10 +217,10 @@ class BrowseWebParams(BaseModel):
         description="Timeout in milliseconds for the action.",
     )
     headless: bool = Field(
-        default=False,
+        default=True,
         description=(
-            "Whether to run Edge in headless mode. Defaults to False "
-            "(visible browser) for interactive user-profile sessions."
+            "Whether to run Edge in headless mode. Defaults to True. "
+            "Set to False for interactive user-profile sessions."
         ),
     )
     user_data_dir: str | None = Field(
@@ -295,11 +295,24 @@ async def _ensure_browser(params: BrowseWebParams) -> None:
         ignore_default_args=["--enable-automation"],
     )
 
-    # Close every about:blank / startup-restored tab that Edge
-    # opens automatically, then create one clean page.
-    for extra in _browser_context.pages:
-        await extra.close()
-    _active_page = await _browser_context.new_page()
+    # Reuse one of the existing tabs that Edge opens automatically
+    # (about:blank / session-restored) instead of closing them all and
+    # creating a new page.  Closing every page in a persistent context
+    # can leave the browser unable to create new tabs on Windows.
+    existing = _browser_context.pages
+    if existing:
+        _active_page = existing[-1]
+        for extra in existing[:-1]:
+            try:
+                await extra.close()
+            except Exception:
+                pass
+        try:
+            await _active_page.goto("about:blank", wait_until="commit")
+        except Exception:
+            pass
+    else:
+        _active_page = await _browser_context.new_page()
     logger.info("Browser session started (profile: %s)", profile_dir)
 
 

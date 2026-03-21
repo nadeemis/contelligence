@@ -19,9 +19,6 @@ class AgentDefinition(BaseModel):
         default=None,
         description="List of atomic tool names this agent can use"
     )
-    mcp_servers: list[str] = Field(
-        description="List of MCP server keys (e.g., ['azure'])"
-    )
     prompt: str = Field(description="Full system prompt for this agent")
     model: str = Field(
         default="gpt-4.1",

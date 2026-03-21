@@ -40,12 +40,13 @@ def create_app(settings: AppSettings) -> FastAPI:
 
     from app.routers import admin, agent, health
     from app.routers import agents as agents_router
-    from app.routers import dashboard, events, schedules, skills, webhooks
+    from app.routers import dashboard, events, mcp_servers, schedules, skills, webhooks
 
     prefix = f"/api/{settings.API_VERSION}"
     
     app.include_router(agent.router, prefix=prefix)
     app.include_router(agents_router.router, prefix=prefix)
+    app.include_router(mcp_servers.router, prefix=prefix)
     app.include_router(health.router, prefix=prefix)
     app.include_router(admin.router, prefix=prefix)
     # Scheduling Engine routers

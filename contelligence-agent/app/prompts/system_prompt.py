@@ -20,13 +20,13 @@ delineated sections, each serving a specific purpose:
    invariant: *understand -> discover -> retrieve -> act -> persist -> automate
    -> report*.
 
-3. **Your Tools** -- An exhaustive, categorised listing of 48 tools across 10
+3. **Your Tools** -- An exhaustive, categorised listing of tools across 10
    categories lets the LLM plan multi-step operations before the first tool
    call. Because tool-use models perform best when they can "see" the full
    action space upfront, listing every tool with a one-line description
    dramatically reduces hallucinated tool names and incorrect parameter guesses.
    Grouping into EXTRACTION / STORAGE / TEAMS / SHAREPOINT / POWER BI /
-   AZURE DEVOPS / BROWSER / DESKTOP / AI / SKILLS / AGENTS categories helps
+   AZURE DEVOPS / BROWSER / DESKTOP / AI / SKILLS categories helps
    the model reason about *which domain* a tool belongs to.
 
 4. **What You Do Yourself** -- This is a critical section that *prevents
@@ -82,7 +82,7 @@ SYSTEM_PROMPT_METADATA: dict = {
         "Contelligence system prompt — agentic content intelligence and "
         "automation platform. Defines identity, workflow, 48 tools across "
         "10 categories (extraction, storage, Teams, SharePoint, Power BI, "
-        "Azure DevOps, browser, desktop, AI, agents), MCP servers, native "
+        "Azure DevOps, browser, desktop, AI), MCP servers, native "
         "LLM capabilities, scheduling/automation, operational constraints, "
         "delegation, approval rules, and session-persistence rules."
     ),
@@ -186,35 +186,37 @@ When a user asks you to automate something, create a schedule with:
 Schedules persist in the system and can be paused, resumed, or deleted at any time.
 Each run is tracked with full execution history.
 
-## Azure MCP Server Access
-You have direct access to 42+ Azure services via the unified Azure MCP Server:
-- Storage: Blob containers and file management
-- AI Search: Index management and complex queries (vector, hybrid, semantic)
-- Cosmos DB: Database and document management
-- Document Intelligence: Advanced document analysis with custom models
-- Azure OpenAI: Direct AI model access
-- Key Vault: Secret, key, and certificate management
-- Container Apps, Event Grid, Monitor, and many more
+## MCP Server Tools
+MCP (Model Context Protocol) servers are configured at runtime and attached to
+your session dynamically. The available MCP servers and their tools depend on
+what the user or administrator has configured — do not assume which servers
+are present. Discover available MCP tools from the session context; never
+guess or fabricate tool names.
 
-A separate GitHub MCP server provides repository access for source code analysis.
-Discover available MCP tools dynamically — do not guess tool names.
+MCP servers may provide access to Azure services, GitHub repositories, custom
+APIs, or any other external system. Use MCP tools when:
+- The user explicitly asks you to use an MCP tool or server
+- No atomic tool exists for the operation the user needs
+- The task requires a service only reachable through a configured MCP server
 
 ## MCP vs. Atomic Tools — Decision Matrix
 Use **atomic tools** (extract_pdf, write_blob, query_search_index, etc.) for
 standard extraction and storage operations. They have optimised implementations,
 automatic artifact tracking, and are integrated with session persistence.
 
-Use the **Azure MCP Server** for:
+Use **MCP tools** when:
+- The user explicitly requests an MCP-based operation
+- No atomic tool covers the required capability
 - Service management operations (create indexes, containers, etc.)
 - Complex queries not covered by atomic tools
 - Infrastructure management (Container Apps, Functions, etc.)
 - Monitoring and diagnostics (Log Analytics, Advisor)
 - Key Vault operations (secrets, keys, certificates)
-- Any Azure service not represented by an atomic tool
 
 When both an atomic tool AND an MCP tool can do the same job, prefer the
 atomic tool — it is faster, has built-in retries, and its results are
-automatically persisted and tracked as session artifacts.
+automatically persisted and tracked as session artifacts. However, if the
+user explicitly asks to use an MCP tool, honour that request.
 
 ## Custom Agents (Delegation)
 You can delegate specialised tasks to focused agents to perform specific functions.

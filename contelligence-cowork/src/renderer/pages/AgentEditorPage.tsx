@@ -32,7 +32,6 @@ import type {
   CreateAgentRequest,
   UpdateAgentRequest,
   ToolInfo,
-  McpServerInfo,
   SkillSummary,
   AgentStatusType,
 } from "@/types";
@@ -45,7 +44,6 @@ interface AgentFormData {
   tags: string[];
   prompt: string;
   tools: string[];
-  mcp_servers: string[];
   bound_skills: string[];
   model: string;
   max_tool_calls: number;
@@ -72,7 +70,6 @@ const defaultForm: AgentFormData = {
   tags: [],
   prompt: "",
   tools: [],
-  mcp_servers: [],
   bound_skills: [],
   model: "gpt-4.1",
   max_tool_calls: 50,
@@ -89,7 +86,6 @@ function formFromRecord(record: AgentDefinitionRecord): AgentFormData {
     tags: record.tags,
     prompt: record.prompt,
     tools: record.tools,
-    mcp_servers: record.mcp_servers,
     bound_skills: record.bound_skills,
     model: record.model_override || "gpt-4.1",
     max_tool_calls: record.max_tool_calls,
@@ -121,12 +117,6 @@ export default function AgentEditorPage() {
   const { data: availableTools = [] } = useQuery({
     queryKey: ["agent-tools"],
     queryFn: () => agentsApi.tools(),
-  });
-
-  // ── Fetch available MCP servers ──
-  const { data: mcpServers = [] } = useQuery({
-    queryKey: ["agent-mcp-servers"],
-    queryFn: () => agentsApi.mcpServers(),
   });
 
   // ── Fetch available skills ──
@@ -207,7 +197,6 @@ export default function AgentEditorPage() {
         icon: form.icon,
         prompt: form.prompt,
         tools: form.tools,
-        mcp_servers: form.mcp_servers,
         bound_skills: form.bound_skills,
         model: form.model || null,
         max_tool_calls: form.max_tool_calls,
@@ -223,7 +212,6 @@ export default function AgentEditorPage() {
         icon: form.icon,
         prompt: form.prompt,
         tools: form.tools,
-        mcp_servers: form.mcp_servers,
         bound_skills: form.bound_skills,
         model: form.model || null,
         max_tool_calls: form.max_tool_calls,
@@ -240,15 +228,6 @@ export default function AgentEditorPage() {
       form.tools.includes(tool)
         ? form.tools.filter((t) => t !== tool)
         : [...form.tools, tool],
-    );
-  };
-
-  const toggleMcp = (id: string) => {
-    updateField(
-      "mcp_servers",
-      form.mcp_servers.includes(id)
-        ? form.mcp_servers.filter((s) => s !== id)
-        : [...form.mcp_servers, id],
     );
   };
 
@@ -517,37 +496,6 @@ export default function AgentEditorPage() {
           )}
         </Section>
 
-        {/* MCP SERVERS */}
-        <Section title="MCP SERVERS">
-          {mcpServers.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              No MCP servers configured.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {mcpServers.map((server: McpServerInfo) => (
-                <label
-                  key={server.id}
-                  className="flex items-center gap-3 cursor-pointer group"
-                >
-                  <Checkbox
-                    checked={form.mcp_servers.includes(server.id)}
-                    onCheckedChange={() => toggleMcp(server.id)}
-                    disabled={isReadOnly}
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                      {server.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      — {server.description}
-                    </span>
-                  </div>
-                </label>
-              ))}
-            </div>
-          )}
-        </Section>
 
         {/* BOUND SKILLS */}
         <Section title="BOUND SKILLS">

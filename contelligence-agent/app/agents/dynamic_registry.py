@@ -97,7 +97,7 @@ class DynamicAgentRegistry:
         """Return a summary list suitable for the API / Web UI.
 
         Each item includes: id, display_name, description, source, status,
-        tools, mcp_servers, tags, icon, usage_count, editable.
+        tools, tags, icon, usage_count, editable.
         """
         all_agents = await self.get_all_agents()
         result: list[dict[str, Any]] = []
@@ -116,7 +116,6 @@ class DynamicAgentRegistry:
                     user_rec.status.value if user_rec else "active"
                 ),
                 "tools": agent_def.tools,
-                "mcp_servers": agent_def.mcp_servers,
                 "model": agent_def.model,
                 "max_tool_calls": agent_def.max_tool_calls,
                 "timeout_seconds": agent_def.timeout_seconds,
@@ -162,7 +161,6 @@ class DynamicAgentRegistry:
                     display_name=rec.display_name,
                     description=rec.description,
                     tools=rec.tools,
-                    mcp_servers=rec.mcp_servers,
                     prompt=rec.prompt,
                     model=rec.model,
                     max_tool_calls=rec.max_tool_calls,

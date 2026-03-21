@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bot,
   BookOpen,
+  Network,
   Settings,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -33,6 +34,7 @@ const navItems = [
   { title: "Metrics", url: "/metrics", icon: BarChart3 },
   { title: "Agents", url: "/agents", icon: Bot },
   { title: "Skills", url: "/skills", icon: BookOpen },
+  { title: "MCP Servers", url: "/mcp-servers", icon: Network },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

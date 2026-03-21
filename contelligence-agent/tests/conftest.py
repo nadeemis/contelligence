@@ -15,13 +15,31 @@ from app.connectors.blob_connector import BlobInfo, BlobProperties
 from app.core.tool_registry import ToolRegistry
 from app.models.session_models import (
     ConversationTurn,
-    OutputArtifact,
     SessionMetrics,
     SessionRecord,
     SessionStatus,
     ToolCallRecord,
 )
 from app.tools import ALL_TOOLS, register_all_tools
+
+# OutputArtifact was removed from session_models; provide a lightweight stub
+# so existing test helpers and fixtures continue to work.
+try:
+    from app.models.session_models import OutputArtifact  # type: ignore[attr-defined]
+except ImportError:
+    from pydantic import BaseModel as _Base
+
+    class OutputArtifact(_Base):  # type: ignore[no-redef]
+        id: str
+        session_id: str
+        name: str = ""
+        description: str = ""
+        artifact_type: str = ""
+        storage_type: str = ""
+        storage_location: str = ""
+        size_bytes: int = 0
+        content_type: str = ""
+        created_at: Any = None
 
 
 # ---------------------------------------------------------------------------

@@ -129,6 +129,9 @@ function ensureDefaultEnvFile(): string {
   return envPath;
 }
 
+// Default MCP config creation is now handled by the Python backend
+// (app.mcp.file_config.ensure_default_config)
+
 /** Start the Python backend process. */
 export async function startBackend(copilotCliPath: string): Promise<void> {
   backendPort = await findAvailablePort(8081);

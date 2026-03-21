@@ -19,6 +19,7 @@ from copilot import CopilotClient, Tool, ToolInvocation, ToolResult, PermissionH
 
 from app.core.client_factory import CopilotClientFactory
 from app.core.tool_registry import ToolDefinition, ToolRegistry
+from app.mcp import mcp_config_to_sdk_config
 from app.models.agent_models import AgentEvent
 from app.utils.copilot_health import (
     CopilotClientUnhealthyError,
@@ -618,9 +619,9 @@ class SessionFactory:
         }
 
         # MCP servers — sub-sessions may restrict to a subset
-        effective_mcp = mcp_override if mcp_override is not None else self.mcp_servers
+        effective_mcp = self.mcp_servers if self.mcp_servers else None
         if effective_mcp:
-            config["mcp_servers"] = effective_mcp
+            config["mcp_servers"] = mcp_config_to_sdk_config(effective_mcp)
 
         if sid:
             config["session_id"] = sid
@@ -638,12 +639,7 @@ class SessionFactory:
         if custom_agents:
             config["custom_agents"] = custom_agents
 
-        # Skill directories — merge factory defaults with session-specific
-        # effective_skills = list(self.skill_directories)
-        # if skill_directories:
-            # for sd in skill_directories:
-            #     if sd not in effective_skills:
-            #         effective_skills.append(sd)
+        # Skill directories
         if skill_directories:
             config["skill_directories"] = skill_directories
 
@@ -729,7 +725,7 @@ class SessionFactory:
         # MCP servers — sub-sessions may restrict to a subset
         effective_mcp = mcp_override if mcp_override is not None else self.mcp_servers
         if effective_mcp:
-            config["mcp_servers"] = effective_mcp
+            config["mcp_servers"] = mcp_config_to_sdk_config(effective_mcp)
 
         if system_prompt:
             config["system_message"] = {"content": system_prompt}

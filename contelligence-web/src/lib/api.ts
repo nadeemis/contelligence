@@ -22,6 +22,9 @@ import type {
   TestAgentResponse,
   ToolInfo,
   McpServerInfo,
+  McpServerEntry,
+  McpServerHealthResult,
+  AddMcpServerRequest,
   SkillRecord,
   SkillSummary,
   CreateSkillRequest,
@@ -216,6 +219,32 @@ export const agentsApi = {
 
   mcpServers: () =>
     apiFetch<McpServerInfo[]>("/agents/mcp-servers"),
+};
+
+// ── MCP Servers API ──────────────────────
+export const mcpServersApi = {
+  list: () =>
+    apiFetch<McpServerEntry[]>("/mcp-servers"),
+
+  add: (data: AddMcpServerRequest) =>
+    apiFetch<McpServerEntry>("/mcp-servers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  remove: (key: string) =>
+    apiFetch<void>(`/mcp-servers/${encodeURIComponent(key)}`, { method: "DELETE" }),
+
+  setDisabled: (key: string, disabled: boolean) =>
+    apiFetch<McpServerEntry>(`/mcp-servers/${encodeURIComponent(key)}/disabled`, {
+      method: "PATCH",
+      body: JSON.stringify({ disabled }),
+    }),
+
+  test: (key: string) =>
+    apiFetch<McpServerHealthResult>(`/mcp-servers/${encodeURIComponent(key)}/test`, {
+      method: "POST",
+    }),
 };
 
 // ── Skills API ───────────────────────────

@@ -12,12 +12,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.agents.dynamic_registry import DynamicAgentRegistry
 from app.core.tool_registry import ToolRegistry
 from app.dependencies import get_agent_store, get_dynamic_registry, get_tool_registry
+from app.mcp.file_config import APP_CONFIG_PATH, SHARED_CONFIG_PATH
 from app.models.custom_agent_models import (
     AgentDefinitionRecord,
     AgentSource,
@@ -44,7 +45,6 @@ class CreateAgentRequest(BaseModel):
     description: str = Field(description="One-line summary", max_length=300)
     prompt: str = Field(description="Full system prompt", max_length=10000)
     tools: list[str] = Field(description="Atomic tool names to allow")
-    mcp_servers: list[str] = Field(default=["azure"])
     model: str = Field(default="gpt-4.1")
     max_tool_calls: int = Field(default=50, ge=1, le=500)
     timeout_seconds: int = Field(default=300, ge=30, le=3600)
@@ -64,7 +64,6 @@ class UpdateAgentRequest(BaseModel):
     description: str | None = Field(default=None, max_length=300)
     prompt: str | None = Field(default=None, max_length=10000)
     tools: list[str] | None = None
-    mcp_servers: list[str] | None = None
     model: str | None = None
     max_tool_calls: int | None = Field(default=None, ge=1, le=500)
     timeout_seconds: int | None = Field(default=None, ge=30, le=3600)
@@ -83,7 +82,6 @@ class AgentSummary(BaseModel):
     source: str
     status: str
     tools: list[str] | None
-    mcp_servers: list[str]
     model: str
     max_tool_calls: int
     timeout_seconds: int
@@ -128,15 +126,6 @@ class ToolInfo(BaseModel):
     name: str
     description: str
     category: str
-
-
-class McpServerInfo(BaseModel):
-    """Metadata about an available MCP server."""
-
-    key: str
-    display_name: str
-    description: str
-
 
 # ── Tool category mapping ──────────────────────────────────────
 
@@ -200,23 +189,6 @@ async def list_available_tools(
     ]
 
 
-@router.get("/mcp-servers", response_model=list[McpServerInfo])
-async def list_mcp_servers() -> list[McpServerInfo]:
-    """List available MCP servers that can be assigned to agents."""
-    return [
-        McpServerInfo(
-            key="azure",
-            display_name="Azure MCP Server",
-            description="Unified access to 42+ Azure services (Storage, AI Search, Cosmos DB, etc.)",
-        ),
-        McpServerInfo(
-            key="github",
-            display_name="GitHub MCP Server",
-            description="Repository access for source code analysis",
-        ),
-    ]
-
-
 @router.post("", response_model=AgentDefinitionRecord, status_code=201)
 async def create_agent(
     body: CreateAgentRequest,
@@ -250,7 +222,6 @@ async def create_agent(
         description=body.description,
         prompt=body.prompt,
         tools=body.tools,
-        mcp_servers=body.mcp_servers,
         model=body.model,
         max_tool_calls=body.max_tool_calls,
         timeout_seconds=body.timeout_seconds,
@@ -291,7 +262,6 @@ async def get_agent(
             description=defn.description,
             prompt=defn.prompt,
             tools=defn.tools,
-            mcp_servers=defn.mcp_servers,
             model=defn.model,
             max_tool_calls=defn.max_tool_calls,
             timeout_seconds=defn.timeout_seconds,
@@ -395,7 +365,6 @@ async def clone_agent(
             description=defn.description,
             prompt=defn.prompt,
             tools=defn.tools,
-            mcp_servers=defn.mcp_servers,
             model=defn.model,
             max_tool_calls=defn.max_tool_calls,
             timeout_seconds=defn.timeout_seconds,
@@ -415,7 +384,6 @@ async def clone_agent(
         description=source_record.description,
         prompt=source_record.prompt,
         tools=source_record.tools,
-        mcp_servers=source_record.mcp_servers,
         model=source_record.model,
         max_tool_calls=source_record.max_tool_calls,
         timeout_seconds=source_record.timeout_seconds,

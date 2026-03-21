@@ -18,9 +18,13 @@
   </tr>
 </table>
 
-**AI-native, agentic content intelligence platform powered by GitHub Copilot SDK.**
+**GitHub Copilot changed how developers work. Contelligence brings that same power to everyone else.**
 
-Contelligence replaces brittle, hard-coded content processing pipelines with an autonomous AI agent that reasons step-by-step, ingests any content — documents, spreadsheets, presentations, web pages, audio, images — understands data by meaning, and delivers structured intelligence. All orchestrated through natural language.
+GitHub Copilot is incredible for coding — but the same agentic platform that makes it brilliant at code also makes it brilliant at *work*. Summarizing documents, pulling reports, processing invoices, automating repetitive tasks — it's all just orchestration. And most people who need that help the most will never open a terminal.
+
+**That's what Contelligence does.** It brings the power of GitHub Copilot to every user — for day-to-day tasks, in plain English, right from the desktop. An AI-native, agentic content intelligence platform powered by GitHub Copilot CLI and SDK that replaces brittle pipelines with an autonomous AI agent. It reasons step-by-step, ingests any content — documents, spreadsheets, presentations, web pages, audio, images — understands data by meaning, and delivers structured intelligence. All orchestrated through natural language.
+
+**Already using MCP servers with Copilot?** Every MCP server you've configured in GitHub Copilot is automatically available to Contelligence. Azure MCP, GitHub MCP, WorkIQ MCP, or any custom server — your agent inherits the full set of capabilities without additional setup.
 
 **Two ways to run — same powerful agent:**
 
@@ -40,30 +44,23 @@ Contelligence replaces brittle, hard-coded content processing pipelines with an 
 
 ## The Problem
 
-Enterprise content processing is broken:
+GitHub Copilot proved that AI can handle complex, multi-step work autonomously — for developers. But most knowledge workers are still stuck doing everything manually: summarizing documents, pulling reports, reconciling invoices, monitoring channels, filling timesheets. The tools exist to automate all of this, but they require pipelines, code, and engineering effort that everyday users will never build.
 
-- **Format fragility** — Custom code is required for every content format, source, and vendor layout. A single template change can break an entire pipeline.
-- **Siloed content** — Organizations sit on vast stores of PDFs, contracts, emails, transcripts, web content, and scanned records, but insights are locked inside individual files. Correlating information across sources requires manual effort or purpose-built integrations.
-- **Manual data entry** — Extracting and reconciling data from heterogeneous content is expensive and error-prone (industry average: ~$12.90 per document error).
-- **Rigid pipelines** — Traditional DAG-based pipelines require configuration, hard-coded field mappers, and months of engineering work to integrate a new content source or format.
-- **No cross-content reasoning** — Even when extraction works, pipelines process files in isolation. Spotting trends, contradictions, or actionable patterns across a corpus requires a separate analytics layer that rarely exists.
-- **Opaque decision-making** — When something goes wrong, there is no clear trail of *why* a field was mapped, a value was chosen, or an error was ignored.
+The result: people spend hours on repetitive content tasks that an AI agent could handle in seconds — if only someone built the bridge.
 
 ## The Solution
 
-Users describe their needs in **plain English**. The Copilot agent reasons about what to do, ingests content from any source and format, understands data semantically (knows that "Invoice Total" = "Grand Total" = "Amount Due"), correlates information across multiple sources, and delivers structured intelligence to any destination.
+Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app that anyone can use. Describe what you need in **plain English** — the agent reasons about what to do, picks the right tools, connects to any MCP server for extended capabilities, ingests content from any format, understands data semantically, and delivers structured results.
 
-**No pipeline configuration. No IT tickets. No redeployment.**
+**No pipelines. No code. No IT tickets.**
 
-| Aspect | Traditional Pipeline | Contelligence |
-|--------|---------------------|---------------|
-| Orchestration | DAG of executors, YAML config | LLM reasoning decides the next step |
-| New content source | Code update required (weeks) | Agent adapts automatically |
-| Data transformation | Hard-coded field mappers | LLM transforms by understanding meaning |
-| Cross-content analysis | Not supported — files processed in isolation | Agent reasons across all ingested content |
-| New format | New executor code required | Agent handles immediately |
-| Error handling | Retry policies, fail flags | Agent observes failure, reasons, adapts |
-| Audit trail | Limited, executor-centric | Complete: every decision, reasoning step, tool call |
+| Aspect | Before | With Contelligence |
+|--------|--------|--------------------|
+| New task | Engineering work (days–weeks) | Natural language instruction (seconds) |
+| New format | Custom parser required | Agent handles it immediately |
+| Cross-document analysis | Manual or not done | Agent reasons across all content |
+| Error handling | Retry policies, fail flags | Agent observes, reasons, adapts |
+| Audit trail | Limited | Every decision, tool call, and reasoning step logged |
 
 ---
 
@@ -216,9 +213,10 @@ Set up recurring jobs in the **Schedules** page:
 | Requirement | Details |
 |-------------|---------|
 | **Operating System** | macOS 12+, Windows 10+, or Linux (Ubuntu 20.04+, Fedora 36+) |
-| **GitHub Personal Access Token** | With `copilot` scope — required for the Copilot SDK (LLM reasoning) |
+| **GitHub account** | With an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise) |
+| **GitHub Copilot CLI** | Install via `npm install -g @githubnext/github-copilot-cli` — required for agent reasoning |
 | **Azure CLI** (optional) | Required only if connecting to Azure services (Blob, Cosmos, AI Search, etc.) |
-| **Disk space** | ~500 MB for the application + space for your documents and local database |
+| **Disk space** | ~200 MB for the application + space for your documents and local database |
 
 #### Setup Steps
 
@@ -229,23 +227,30 @@ Set up recurring jobs in the **Schedules** page:
    - Windows: Squirrel installer (`.exe`) → auto-installs and creates shortcuts
    - Linux: `.deb` or `.rpm` package → install via package manager
 
-2. **Set your GitHub token**
+2. **Install GitHub Copilot CLI**  
+   Note: Node.js 22+ is required for installing the Copilot CLI.
 
-   On first launch, Cowork creates a default `.env` file at:
-   - macOS: `~/Library/Application Support/Contelligence/.env`
-   - Windows: `%APPDATA%/Contelligence/.env`
-   - Linux: `~/.config/Contelligence/.env`
-
-   Add your token:
-   ```env
-   COPILOT_GITHUB_TOKEN=<your-github-pat-with-copilot-scope>
+   ```bash
+   npm install -g @githubnext/github-copilot-cli
    ```
+   
+   Make sure you're signed in to your GitHub account with an active Copilot subscription.
+   Detailed instructions for Copilot CLI setup can be found in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started).
 
 3. **Launch the app**
 
    Cowork automatically starts the backend, finds an available port, and opens the UI. The agent is ready when the dashboard loads.
 
-4. **(Optional) Connect to Azure**
+4. **(Optional) Advanced configuration**
+
+   On first launch, Cowork creates a `.env` file at:
+   - `{HOME_DIR}/.contelligence/.env`
+
+   Optional parameters include:
+   - `COPILOT_GITHUB_TOKEN` — A GitHub PAT with `copilot` scope (alternative to CLI-based auth)
+   - `AZURE_*` — Azure service endpoints for cloud features
+
+5. **(Optional) Connect to Azure**
 
    If you have Azure resources and want advanced features (OCR via Document Intelligence, vector search via AI Search, cloud storage):
    ```bash
@@ -263,7 +268,7 @@ Set up recurring jobs in the **Schedules** page:
 | **Node.js 20+** | Frontend and Electron build |
 | **Docker** + Docker Compose | For full-stack local development with Azure services |
 | **Azure CLI** | For provisioning and deployment |
-| **GitHub Personal Access Token** | With `copilot` scope |
+| **GitHub Copilot CLI** | `npm install -g @githubnext/github-copilot-cli` — requires a GitHub account with Copilot subscription |
 
 #### Running Cowork in Development Mode
 
@@ -490,6 +495,49 @@ Skills are code-free knowledge packages (Markdown + YAML) that inject domain exp
 **Example:** The built-in `invoice-processing` skill teaches the agent the full invoice workflow — discover, extract, validate, normalize, output, report — along with field mappings (knows "Invoice Total" = "Grand Total" = "Amount Due"), multi-page handling, credit note detection, and validation rules.
 
 No code changes. No deployments. New domain expertise is live the moment you click **Save**.
+
+### MCP Servers — Plug-In Any External Capability
+
+Contelligence uses the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) to connect your agent to external services and tools. Any MCP server you've already configured for GitHub Copilot is automatically available — no extra setup required.
+
+**Adding a new MCP server:**
+
+MCP servers configured in GitHub Copilot CLI are discovered automatically at startup. To add a new one:
+
+1. **Configure in Copilot CLI** — Add the server to your Copilot CLI MCP configuration (typically in `~/.copilot/mcp-config.json` or your VS Code settings):
+   ```json
+    {
+    "mcpServers": {
+      "playwright": {
+        "type": "local",
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"],
+        "env": {},
+        "tools": ["*"]
+      },
+      "microsoft-learn": {
+        "type": "http",
+        "url": "https://learn.microsoft.com/api/mcp"
+      },
+      "custom-server": {
+        "type": "http",
+        "url": "http://localhost:5008",
+        "headers": {},
+        "tools": ["*"]
+      }
+    }
+   }
+   ```
+
+2. **Restart Contelligence** — The agent discovers the new server and its tools become available immediately.
+
+3. **Use it** — The agent automatically selects MCP tools when they're relevant to your instruction. No configuration in Contelligence itself.
+
+You can also configure MCP servers via HTTP transport for remote or sidecar deployments by setting the server URL in environment variables (e.g., `AZURE_MCP_SERVER_URL=http://localhost:5008`).
+
+Any [MCP-compatible server](https://modelcontextprotocol.io/docs/servers) works — community servers, vendor servers, or your own custom implementations.
+
+More details on adding MCP servers in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers).
 
 ---
 

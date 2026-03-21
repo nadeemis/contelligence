@@ -288,7 +288,6 @@ export interface AgentDefinitionRecord {
   icon: string;
   prompt: string;
   tools: string[];
-  mcp_servers: string[];
   model_override: string | null;
   max_tool_calls: number;
   timeout_seconds: number;
@@ -310,7 +309,6 @@ export interface CreateAgentRequest {
   icon?: string;
   prompt: string;
   tools: string[];
-  mcp_servers?: string[];
   model?: string | null;
   max_tool_calls?: number;
   timeout_seconds?: number;
@@ -325,7 +323,6 @@ export interface UpdateAgentRequest {
   icon?: string;
   prompt?: string;
   tools?: string[];
-  mcp_servers?: string[];
   model?: string | null;
   max_tool_calls?: number;
   timeout_seconds?: number;
@@ -354,10 +351,23 @@ export interface ToolInfo {
   category: string;
 }
 
-export interface McpServerInfo {
-  id: string;
+// ── MCP Server Management ─────────
+export interface McpServerEntry {
   name: string;
-  description: string;
+  disabled: boolean;
+  config: Record<string, any>;
+}
+
+export interface McpServerHealthResult {
+  key: string;
+  status: string;
+  transport: string;
+  detail: string;
+}
+
+export interface AddMcpServerRequest {
+  name: string;
+  config: Record<string, any>;
 }
 
 export interface TestAgentRequest {

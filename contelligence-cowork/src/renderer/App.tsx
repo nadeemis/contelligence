@@ -21,6 +21,7 @@ const AgentsPage = lazy(() => import("@/pages/Agents"));
 const AgentEditorPage = lazy(() => import("@/pages/AgentEditorPage"));
 const SkillsPage = lazy(() => import("@/pages/Skills"));
 const SkillEditorPage = lazy(() => import("@/pages/SkillEditorPage"));
+const McpServersPage = lazy(() => import("@/pages/McpServersPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -72,6 +73,7 @@ const App = () => (
               <Route path="/skills" element={<SkillsPage />} />
               <Route path="/skills/new" element={<SkillEditorPage />} />
               <Route path="/skills/:skillId" element={<SkillEditorPage />} />
+              <Route path="/mcp-servers" element={<McpServersPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />

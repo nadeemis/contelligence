@@ -257,16 +257,18 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # MCP server configuration
     # ------------------------------------------------------------------
     from app.mcp.config import get_mcp_servers_config
-    
+    from app.mcp.file_config import ensure_default_config
+
+    ensure_default_config()  # scaffold ~/.contelligence/mcp-config.json on first run
     mcp_config = get_mcp_servers_config()
 
-    if resolved_github_token and "github" in mcp_config:
-        mcp_config["github"]["auth"]["token"] = resolved_github_token
-        logger.info("GitHub MCP token set from resolved token.")
-    elif not resolved_github_token:
-        logger.warning(
-            "GitHub PAT not resolved — GitHub MCP server will be unavailable."
-        )
+    # if resolved_github_token and "github" in mcp_config:
+    #     mcp_config["github"]["auth"]["token"] = resolved_github_token
+    #     logger.info("GitHub MCP token set from resolved token.")
+    # elif not resolved_github_token:
+    #     logger.warning(
+    #         "GitHub PAT not resolved — GitHub MCP server will be unavailable."
+    #     )
 
     app.state.mcp_config = mcp_config
 
