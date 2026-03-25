@@ -105,7 +105,6 @@ class InstructOptions(BaseModel):
         description=(
             "Skill IDs to activate for this session. "
             "Empty list means all active skills are discoverable. "
-            "Specified skills are pre-loaded at Level 2 (full instructions)."
         ),
     )
 

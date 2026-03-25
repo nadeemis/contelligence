@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,8 +39,10 @@ from app.models.skill_models import (
     SkillValidationResult,
     UpdateSkillRequest,
 )
+from app.settings import AppSettings, get_settings
 from app.skills.store import SkillAlreadyExistsError, SkillNotFoundError, SkillStore
 from app.skills.validator import validate_skill_frontmatter
+
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
@@ -60,11 +63,11 @@ class SkillsManager:
         self,
         skill_store: SkillStore,
         blob_connector: BlobConnectorAdapter,
-        extra_skill_directories: list[str] | None = None,
+        settings: AppSettings | None = None,
     ) -> None:
         self._store = skill_store
         self._blob = blob_connector
-        self._extra_skill_directories: list[str] = extra_skill_directories or []
+        self._settings = settings or get_settings()
 
         # Level 1 metadata cache: {skill_id: SkillRecord}
         self._metadata_cache: dict[str, SkillRecord] = {}
@@ -78,20 +81,135 @@ class SkillsManager:
         """Return the path to the built-in skills directory."""
         return _BUILT_IN_SKILLS_DIR
 
+    @property
+    def cli_shared_skills_dir(self) -> str:
+        """Return the configured ``CLI_SHARED_SKILLS_DIRECTORY``, or empty string."""
+        return self._settings.CLI_SHARED_SKILLS_DIRECTORY
+
     def get_skill_directories(self) -> list[str]:
         """Return filesystem paths the SDK should load skills from.
 
-        Includes:
-        - The built-in skills directory (if it exists on disk)
-        - Any extra directories configured at construction time
+        When ``CLI_SHARED_SKILLS_DIRECTORY`` is configured it is the single
+        authoritative directory — all skills (built-in + user-created)
+        are materialized there.  Falls back to the built-in source
+        directory when no shared directory is set.
         """
-        dirs: list[str] = []
+        shared = self.cli_shared_skills_dir
+        if shared:
+            return [shared]
+        # Fallback: use built-in skills dir from the source tree
         if _BUILT_IN_SKILLS_DIR.is_dir():
-            dirs.append(str(_BUILT_IN_SKILLS_DIR))
-        for d in self._extra_skill_directories:
-            if d not in dirs:
-                dirs.append(d)
-        return dirs
+            return [str(_BUILT_IN_SKILLS_DIR)]
+        return []
+
+    # ── Shared skills directory (filesystem materialization) ──
+
+    async def _materialize_to_shared(
+        self,
+        skill_name: str,
+        skill_md_content: str,
+        extra_files: dict[str, bytes] | None = None,
+    ) -> None:
+        """Write skill files to the shared skills directory on disk.
+
+        This makes the skill visible to the Copilot CLI container (Docker)
+        or the local SDK session (Electron / dev server) via
+        ``skill_directories``.
+
+        No-op when ``AGENT_SHARED_SKILLS_DIRECTORY`` is not configured.
+        """
+        shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
+        if not shared_dir:
+            return
+
+        skill_path = Path(shared_dir) / skill_name
+        skill_path.mkdir(parents=True, exist_ok=True)
+
+        with skill_path.joinpath("SKILL.md").open("w", encoding="utf-8") as f:
+            f.write(skill_md_content)
+
+        if extra_files:
+            for relative_path, content in extra_files.items():
+                file_path = skill_path / relative_path
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_bytes(content)
+
+        logger.info("Materialized skill '%s' to %s", skill_name, skill_path)
+
+    def _remove_from_shared(self, skill_name: str) -> None:
+        """Remove a skill from the shared skills directory.
+
+        No-op when ``AGENT_SHARED_SKILLS_DIRECTORY`` is not configured or the
+        directory does not exist.
+        """
+        shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
+        if not shared_dir:
+            return
+        skill_path = Path(shared_dir) / skill_name
+        if skill_path.is_dir():
+            shutil.rmtree(skill_path)
+            logger.info("Removed skill '%s' from shared directory.", skill_name)
+
+    async def sync_skills_to_shared_directory(self) -> int:
+        """Materialize all active skills to the shared skills directory.
+
+        Called once at startup to ensure the shared volume (Docker) or
+        local directory (Electron) has a complete snapshot of all skills
+        (built-in + user-created).
+
+        Returns the number of skills materialized.
+        """
+        shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
+        if not shared_dir:
+            return 0
+
+        Path(shared_dir).mkdir(parents=True, exist_ok=True)
+
+        records = await self._store.list_skills()
+        synced = 0
+        for record in records:
+            if record.status not in (SkillStatus.ACTIVE, SkillStatus.DRAFT):
+                continue
+            try:
+                # Prefer blob content, fall back to record.instructions
+                skill_md: str | None = None
+                try:
+                    await self._blob.ensure_initialized()
+                    data = await self._blob.download_blob(
+                        _SKILLS_BLOB_CONTAINER,
+                        f"{record.blob_prefix}SKILL.md",
+                    )
+                    skill_md = data.decode("utf-8")
+                except Exception:
+                    if record.instructions:
+                        # Reconstruct full SKILL.md with frontmatter so
+                        # the materialized file is complete (record.instructions
+                        # only contains the body after the YAML fences).
+                        skill_md = _build_skill_md_from_record(record)
+
+                if skill_md:
+                    # Also download extra files for this skill
+                    extra: dict[str, bytes] = {}
+                    for rel in record.files:
+                        if rel == "SKILL.md":
+                            continue
+                        try:
+                            blob_data = await self._blob.download_blob(
+                                _SKILLS_BLOB_CONTAINER,
+                                f"{record.blob_prefix}{rel}",
+                            )
+                            extra[rel] = blob_data
+                        except Exception:
+                            pass
+                    await self._materialize_to_shared(
+                        record.name, skill_md, extra_files=extra or None,
+                    )
+                    synced += 1
+            except Exception:
+                logger.warning(
+                    f"Failed to materialize skill '{record.name}' to shared dir."
+                )
+        return synced
 
     # ── Startup & Built-in Sync ────────────────────────────
 
@@ -101,7 +219,7 @@ class SkillsManager:
         Built-in Skills are shipped inside the container image. This method:
         1. Reads each ``SKILL.md`` in the ``skills/`` directory.
         2. Validates the frontmatter.
-        3. Creates or updates the Cosmos DB record.
+        3. Creates or updates the DB record.
         4. Uploads Skill files to Blob Storage.
 
         Returns the number of built-in Skills synced.
@@ -144,6 +262,7 @@ class SkillsManager:
                     metadata={
                         str(k): str(v)
                         for k, v in (fm.get("metadata") or {}).items()
+                        if not isinstance(v, (list, dict))
                     },
                     tags=_extract_tags(fm),
                     source=SkillSource.BUILT_IN,
@@ -155,7 +274,7 @@ class SkillsManager:
                     partition_key="skill",
                 )
 
-                # Upsert to Cosmos (idempotent)
+                # Upsert to Database store (idempotent)
                 try:
                     await self._store.create_skill(record)
                 except SkillAlreadyExistsError:
@@ -176,11 +295,29 @@ class SkillsManager:
 
                 # Upload files to Blob Storage
                 await self._upload_skill_directory(skill_name, skill_dir)
+
+                # Materialize to shared skills directory (so CLI/SDK can discover)
+                try:
+                    extra_files: dict[str, bytes] = {}
+                    for f in files:
+                        if f == "SKILL.md":
+                            continue
+                        fp = skill_dir / f
+                        if fp.is_file():
+                            extra_files[f] = fp.read_bytes()
+                    
+                    await self._materialize_to_shared(
+                        skill_name, content, extra_files=extra_files or None,
+                    )
+                except Exception:
+                    logger.warning(f"Failed to materialize built-in skill '{skill_name}' to shared dir.")
+                    raise
+
                 synced += 1
-                logger.info("Synced built-in skill '%s' (%d files).", skill_name, len(files))
+                logger.info(f"Synced built-in skill '{skill_name}' ({len(files)} files).")
 
             except Exception:
-                logger.exception("Error syncing built-in skill '%s'.", skill_dir.name)
+                logger.exception(f"Error syncing built-in skill '{skill_dir.name}'.", exc_info=True)
 
         # Refresh cache after sync
         self._cache_timestamp = 0.0
@@ -435,6 +572,12 @@ class SkillsManager:
         except Exception:
             logger.exception("Failed to upload SKILL.md for '%s'.", request.name)
 
+        # Materialize to shared filesystem (Docker volume / local dir)
+        try:
+            await self._materialize_to_shared(request.name, skill_md)
+        except Exception:
+            logger.exception("Failed to materialize skill '%s' to shared dir.", request.name)
+
         # Invalidate cache
         self._cache_timestamp = 0.0
         return record
@@ -474,6 +617,12 @@ class SkillsManager:
             except Exception:
                 logger.exception("Failed to update SKILL.md blob for '%s'.", skill_id)
 
+            # Re-materialize to shared filesystem
+            try:
+                await self._materialize_to_shared(current.name, skill_md)
+            except Exception:
+                logger.exception("Failed to materialize skill '%s' to shared dir.", skill_id)
+
         record = await self._store.update_skill(skill_id, updates)
 
         # Invalidate cache
@@ -504,6 +653,12 @@ class SkillsManager:
                     logger.warning("Failed to delete blob '%s'.", blob.name)
         except Exception:
             logger.exception("Failed to cleanup blobs for skill '%s'.", skill_id)
+
+        # Remove from shared filesystem
+        try:
+            self._remove_from_shared(record.name)
+        except Exception:
+            logger.exception("Failed to remove skill '%s' from shared dir.", skill_id)
 
         # Invalidate cache
         self._cache_timestamp = 0.0
@@ -611,6 +766,42 @@ class SkillsManager:
             updated_files = sorted(set(record.files + added_files))
             await self._store.update_skill(skill_id, {"files": updated_files})
 
+        # Re-materialize to shared filesystem with updated content
+        if added_files:
+            try:
+                skill_md_content: str | None = None
+                try:
+                    md_data = await self._blob.download_blob(
+                        _SKILLS_BLOB_CONTAINER,
+                        f"{record.blob_prefix}SKILL.md",
+                    )
+                    skill_md_content = md_data.decode("utf-8")
+                except Exception:
+                    if record.instructions:
+                        skill_md_content = record.instructions
+
+                if skill_md_content:
+                    extra: dict[str, bytes] = {}
+                    for rel in added_files:
+                        if rel == "SKILL.md":
+                            continue
+                        try:
+                            bd = await self._blob.download_blob(
+                                _SKILLS_BLOB_CONTAINER,
+                                f"{record.blob_prefix}{rel}",
+                            )
+                            extra[rel] = bd
+                        except Exception:
+                            pass
+                    await self._materialize_to_shared(
+                        record.name, skill_md_content, extra_files=extra or None,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to materialize zip contents for '%s' to shared dir.",
+                    skill_id,
+                )
+
         self._cache_timestamp = 0.0
         logger.info("Extracted %d files from zip for skill '%s'.", len(added_files), skill_id)
         return {"files_added": len(added_files), "files": added_files}
@@ -687,6 +878,7 @@ class SkillsManager:
             except Exception:
                 logger.exception("Failed to refresh skills metadata cache.")
 
+    
     async def _upload_skill_directory(self, skill_name: str, local_dir: Path) -> None:
         """Upload all files from a local skill directory to Blob Storage."""
         await self._blob.ensure_initialized()
@@ -755,11 +947,68 @@ def _build_skill_md(request: CreateSkillRequest) -> str:
         frontmatter["license"] = request.license
     if request.compatibility:
         frontmatter["compatibility"] = request.compatibility
-    if request.metadata:
-        frontmatter["metadata"] = request.metadata
+    metadata = dict(request.metadata) if request.metadata else {}
+    if request.tags:
+        metadata["tags"] = request.tags
+    if metadata:
+        frontmatter["metadata"] = metadata
 
-    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+    yaml_str = _dump_frontmatter(frontmatter)
     return f"---\n{yaml_str}---\n\n{request.instructions}"
+
+
+def _build_skill_md_from_record(record: SkillRecord) -> str:
+    """Reconstruct a full SKILL.md (frontmatter + body) from a SkillRecord.
+
+    Used when blob storage is unavailable and only the parsed
+    ``record.instructions`` (body without frontmatter) is available.
+    """
+    frontmatter: dict[str, Any] = {
+        "name": record.name,
+        "description": record.description,
+    }
+
+    if record.license:
+        frontmatter["license"] = record.license
+    if record.compatibility:
+        frontmatter["compatibility"] = record.compatibility
+    metadata = dict(record.metadata) if record.metadata else {}
+    if record.tags:
+        metadata["tags"] = record.tags
+    if metadata:
+        frontmatter["metadata"] = metadata
+
+    yaml_str = _dump_frontmatter(frontmatter)
+    return f"---\n{yaml_str}---\n\n{record.instructions}"
+
+
+def _dump_frontmatter(frontmatter: dict[str, Any]) -> str:
+    """Serialize frontmatter dict to YAML with double-quoted flow-style lists."""
+    import yaml
+
+    class _Dumper(yaml.SafeDumper):
+        pass
+
+    class _QuotedStr(str):
+        """Marker for strings that should be double-quoted."""
+
+    def _represent_quoted_str(dumper: yaml.SafeDumper, data: str) -> yaml.Node:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
+
+    def _represent_list(dumper: yaml.SafeDumper, data: list) -> yaml.Node:
+        # Wrap each item so it gets double-quoted inside the flow sequence
+        quoted = [_QuotedStr(item) if isinstance(item, str) else item for item in data]
+        return dumper.represent_sequence(
+            "tag:yaml.org,2002:seq", quoted, flow_style=True,
+        )
+
+    _Dumper.add_representer(_QuotedStr, _represent_quoted_str)
+    _Dumper.add_representer(list, _represent_list)
+
+    return yaml.dump(
+        frontmatter, Dumper=_Dumper, default_flow_style=False,
+        allow_unicode=True, sort_keys=False,
+    )
 
 
 def _guess_content_type(suffix: str) -> str:

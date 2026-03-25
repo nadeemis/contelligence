@@ -31,7 +31,7 @@ function SessionHeader({ session }: { session?: SessionRecord }) {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-bold text-foreground font-display tracking-wide">
-          Session {session.id.slice(0, 8)}
+          Session {session.id}
         </h1>
         <Badge variant="outline" className={statusColors[session.status] ?? statusColors.active}>
           {statusIcon(session.status)} {session.status}
@@ -116,12 +116,12 @@ function ConversationLog({ turns }: { turns: ConversationTurn[] }) {
                   <div className="mt-2 rounded bg-background/50 p-2 font-mono text-xs">
                     <div className="flex items-center gap-2">
                       <span className="text-primary font-medium">{turn.tool_call.tool_name}</span>
-                      <span className={turn.tool_call.success ? "text-success" : "text-destructive"}>
-                        {turn.tool_call.success ? "✅" : "❌"}
+                      <span className={turn.tool_call.status === "success" ? "text-success" : "text-destructive"}>
+                        {turn.tool_call.status === "success" ? "✅" : "❌"}
                       </span>
                       <span className="text-muted-foreground">{turn.tool_call.duration_ms}ms</span>
                     </div>
-                    <p className="text-muted-foreground mt-1">{turn.tool_call.result_summary}</p>
+                    <p className="text-muted-foreground mt-1">{JSON.stringify(turn.tool_call.result, null, 2)}</p>
                   </div>
                 )}
               </div>

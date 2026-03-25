@@ -15,10 +15,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from copilot import CopilotClient, Tool, PermissionHandler, CopilotSession as SDKSession
+from copilot import CopilotClient, Tool, ToolInvocation, ToolResult, PermissionHandler, CopilotSession as SDKSession
 
 from app.core.client_factory import CopilotClientFactory
 from app.core.tool_registry import ToolDefinition, ToolRegistry
+from app.mcp import mcp_config_to_sdk_config
 from app.models.agent_models import AgentEvent
 from app.utils.copilot_health import (
     CopilotClientUnhealthyError,
@@ -80,6 +81,7 @@ class CopilotSession:
         try:
             await self.sdk_session.send({"prompt": instruction})
             await done.wait()
+            self.status = "completed"
         except Exception as exc:
             self.status = "error"
             await event_queue.put(
@@ -453,7 +455,7 @@ class CopilotSession:
                     "SDK session %s unrecognized event type: %s",
                     self.session_id, etype,
                 )
-                _emit("unknown_event", {"original_type": etype})
+                _emit("unknown_event", {"original_type": etype, "data": str(d)})
 
         self.sdk_session.on(on_event)
 
@@ -466,10 +468,11 @@ class CopilotSession:
         """Destroy the SDK session and mark as completed."""
         self.status = "completed"
         try:
-            await self.sdk_session.destroy()
+            await self.sdk_session.abort()
+            await self.sdk_session.disconnect()
         except Exception:
-            logger.warning("Error destroying SDK session %s", self.session_id)
-        logger.info("Session %s closed", self.session_id)
+            logger.warning("Error aborting/disconnecting SDK session %s", self.session_id)
+        logger.info(f"Session {self.session_id} aborted and disconnected")
 
 
 # ----------------------------------------------------------------------
@@ -552,7 +555,7 @@ class SessionFactory:
 
     async def create_session(
         self,
-        session_id: str | None = None,
+        session_id: str,
         model: str | None = None,
         system_prompt: str = "",
         event_queue: asyncio.Queue[AgentEvent] | None = None,
@@ -569,7 +572,7 @@ class SessionFactory:
         Parameters
         ----------
         session_id:
-            Unique identifier for the session.  Generated when not provided.
+            Unique identifier for the session.  Must be provided.
         model:
             The LLM model name.  Falls back to ``self.default_model``.
         system_prompt:
@@ -601,7 +604,7 @@ class SessionFactory:
         if self._health is not None and not self._health.healthy:
             raise CopilotClientUnhealthyError(self._health)
 
-        sid = session_id or str(uuid.uuid4())
+        sid = session_id
 
         if tools_override is not None:
             copilot_tools = [self._wrap_tool(td) for td in tools_override]
@@ -616,9 +619,9 @@ class SessionFactory:
         }
 
         # MCP servers — sub-sessions may restrict to a subset
-        effective_mcp = mcp_override if mcp_override is not None else self.mcp_servers
+        effective_mcp = self.mcp_servers if self.mcp_servers else None
         if effective_mcp:
-            config["mcp_servers"] = effective_mcp
+            config["mcp_servers"] = mcp_config_to_sdk_config(effective_mcp)
 
         if sid:
             config["session_id"] = sid
@@ -636,14 +639,9 @@ class SessionFactory:
         if custom_agents:
             config["custom_agents"] = custom_agents
 
-        # Skill directories — merge factory defaults with session-specific
-        effective_skills = list(self.skill_directories)
+        # Skill directories
         if skill_directories:
-            for sd in skill_directories:
-                if sd not in effective_skills:
-                    effective_skills.append(sd)
-        if effective_skills:
-            config["skill_directories"] = effective_skills
+            config["skill_directories"] = skill_directories
 
         if disabled_skills:
             config["disabled_skills"] = disabled_skills
@@ -727,7 +725,7 @@ class SessionFactory:
         # MCP servers — sub-sessions may restrict to a subset
         effective_mcp = mcp_override if mcp_override is not None else self.mcp_servers
         if effective_mcp:
-            config["mcp_servers"] = effective_mcp
+            config["mcp_servers"] = mcp_config_to_sdk_config(effective_mcp)
 
         if system_prompt:
             config["system_message"] = {"content": system_prompt}
@@ -775,19 +773,32 @@ class SessionFactory:
         """Wrap a ``ToolDefinition`` as a ``copilot.Tool``.
 
         The wrapper bridges our ``(params, context) -> dict`` handler
-        signature to the SDK's ``handler(invocation) -> str`` convention.
+        signature to the SDK's ``handler(invocation) -> ToolResult`` convention.
         The tool context is captured in the closure so each invocation
         receives the shared connector instances.
         """
         context = self.tool_context
 
-        async def handler(invocation: dict[str, Any]) -> str:
-            parsed_args = invocation.get("arguments", {})
-            params = tool_def.parameters_model.model_validate(parsed_args)
-            result = tool_def.handler(params, context)
-            if asyncio.iscoroutine(result):
-                result = await result
-            return json.dumps(result, default=str)
+        async def handler(invocation: ToolInvocation) -> ToolResult:
+            try:
+                parsed_args = invocation.arguments or {}
+                params = tool_def.parameters_model.model_validate(parsed_args)
+                result = tool_def.handler(params, context)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                return ToolResult(
+                    text_result_for_llm=json.dumps(result, default=str),
+                    result_type="success",
+                    tool_telemetry={"tool_name": tool_def.name},
+                )
+            except Exception as exc:
+                logger.exception(f"Tool {tool_def.name} failed: {exc}")
+                return ToolResult(
+                    text_result_for_llm=json.dumps({"error": str(exc)}),
+                    result_type="failure",
+                    error=str(exc),
+                    tool_telemetry={"tool_name": tool_def.name},
+                )
 
         return Tool(
             name=tool_def.name,
@@ -839,11 +850,21 @@ class SessionFactory:
                     type="tool_call_complete",
                     data={
                         "tool": tool_name,
+                        "timestamp": input_data.get("timestamp", ""),
+                        "tool_cwd": input_data.get("cwd", ""),
                         "duration_ms": duration_ms,
+                        "tool_args": input_data.get("toolArgs", None),
+                        "tool_result": input_data.get("toolResult", None),
+                        "result_type": input_data.get("resultType", None),
+                        "tool_telemetry": input_data.get("toolTelemetry", None),
                     },
                     session_id=session_id,
                 )
             )
+            
+            logger.debug(f"Tool {tool_name} completed in {duration_ms}ms for session {session_id}")
+            # logger.debug(f"Tool {tool_name} post-use input data: {input_data}")
+            
             return {}
 
         async def on_error_occurred(

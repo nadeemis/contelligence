@@ -1,24 +1,11 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
+from app.connectors.blob_types import BlobInfo, BlobProperties
+
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
-
-@dataclass
-class BlobInfo:
-    name: str
-    size: int
-    content_type: str | None
-
-
-@dataclass
-class BlobProperties:
-    name: str
-    size: int
-    content_type: str | None
-    metadata: dict[str, str]
 
 
 class BlobConnectorAdapter:
@@ -42,16 +29,26 @@ class BlobConnectorAdapter:
         from azure.storage.blob.aio import BlobServiceClient
 
         account_url = f"https://{self._account_name}.blob.core.windows.net"
+
+        # Use shorter connection/read timeouts to avoid indefinite hangs on
+        # stale pooled connections after laptop sleep or network changes.
+        sdk_kwargs: dict = dict(
+            connection_timeout=10,
+            read_timeout=30,
+        )
+
         if self._account_key:
             self._client = BlobServiceClient(
-                account_url=account_url, credential=self._account_key
+                account_url=account_url, credential=self._account_key,
+                **sdk_kwargs,
             )
         else:
             from azure.identity.aio import DefaultAzureCredential
 
             self._credential = DefaultAzureCredential()
             self._client = BlobServiceClient(
-                account_url=account_url, credential=self._credential
+                account_url=account_url, credential=self._credential,
+                **sdk_kwargs,
             )
 
     async def list_blobs(

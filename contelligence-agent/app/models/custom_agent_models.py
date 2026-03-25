@@ -63,10 +63,6 @@ class AgentDefinitionRecord(BaseModel):
     tools: list[str] = Field(
         description="List of atomic tool names this agent is allowed to call",
     )
-    mcp_servers: list[str] = Field(
-        default_factory=lambda: ["azure"],
-        description="List of MCP server keys this agent can access",
-    )
     model: str = Field(
         default="gpt-4.1",
         description="Default LLM model for this agent's sub-sessions",

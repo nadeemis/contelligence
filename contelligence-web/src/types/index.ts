@@ -257,6 +257,26 @@ export interface McpServerInfo {
   id: string;
   name: string;
   description: string;
+  source?: 'built-in' | 'shared' | 'app';
+}
+
+// ── MCP Server Management ─────────
+export interface McpServerEntry {
+  name: string;
+  disabled: boolean;
+  config: Record<string, any>;
+}
+
+export interface McpServerHealthResult {
+  key: string;
+  status: string;
+  transport: string;
+  detail: string;
+}
+
+export interface AddMcpServerRequest {
+  name: string;
+  config: Record<string, any>;
 }
 
 export interface TestAgentRequest {

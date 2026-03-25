@@ -30,7 +30,6 @@ CUSTOM_AGENTS: dict[str, AgentDefinition] = {
             "read_blob",
             "write_blob",
         ],
-        mcp_servers=["azure"],
         prompt=DOCUMENT_PROCESSOR_PROMPT,
     ),
     "data-analyst": AgentDefinition(
@@ -45,7 +44,6 @@ CUSTOM_AGENTS: dict[str, AgentDefinition] = {
         #     "generate_embeddings",
         # ],
         tools=None,  # No tools - gives access to all tools for maximum flexibility in analysis and reporting
-        mcp_servers=["azure"],
         prompt=DATA_ANALYST_PROMPT,
         infer=True,
     ),
@@ -60,7 +58,6 @@ CUSTOM_AGENTS: dict[str, AgentDefinition] = {
             "extract_pdf",
             "call_doc_intelligence",
         ],
-        mcp_servers=["azure"],
         prompt=QA_REVIEWER_PROMPT,
     ),
 }

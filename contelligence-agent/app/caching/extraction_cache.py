@@ -14,7 +14,6 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from azure.cosmos.aio import ContainerProxy
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
@@ -41,7 +40,7 @@ class ExtractionCache:
 
     def __init__(
         self,
-        container: ContainerProxy,
+        container: Any,
         ttl_days: int = 7,
     ) -> None:
         self._container = container

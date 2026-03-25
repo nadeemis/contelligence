@@ -296,3 +296,130 @@ class ActivityEvent(BaseModel):
         if len(v) > 200:
             return v[:197] + "..."
         return v
+
+
+# ---------------------------------------------------------------------------
+# Detailed Metrics Models (Metrics Page)
+# ---------------------------------------------------------------------------
+
+
+class SessionMetricsDetail(BaseModel):
+    """Detailed session metrics broken into tables."""
+
+    token_usage_by_day: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Daily token usage: date, input_tokens, output_tokens, cache_tokens, total_tokens, cost",
+    )
+    duration_by_day: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Daily duration stats: date, avg_duration, min_duration, max_duration, session_count",
+    )
+    status_by_day: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Daily status counts: date, active, completed, failed, cancelled",
+    )
+    documents_by_day: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Daily document processing: date, documents_processed, outputs_produced, errors",
+    )
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cache_tokens: int = 0
+    total_cost: float = 0.0
+    avg_duration: float = 0.0
+
+
+class ToolCallMetricsDetail(BaseModel):
+    """Detailed tool call metrics broken into tables."""
+
+    tool_usage: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Per-tool breakdown: tool_name, total_calls, success_count, error_count, avg_duration_ms",
+    )
+    tool_calls_by_day: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Daily tool call counts: date, count",
+    )
+    tool_errors: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Tool errors: tool_name, error_count, last_error",
+    )
+    tool_duration: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Tool duration: tool_name, avg_duration_ms, min_duration_ms, max_duration_ms",
+    )
+    total_tool_calls: int = 0
+    total_tool_errors: int = 0
+
+
+class ScheduleMetricsDetail(BaseModel):
+    """Detailed schedule metrics broken into tables."""
+
+    schedule_overview: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Per-schedule: name, status, total_runs, success_rate, last_run_at, next_run_at",
+    )
+    runs_by_day: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Daily run counts: date, runs, successes, failures",
+    )
+    schedule_duration: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Per-schedule duration: name, avg_duration, min_duration, max_duration",
+    )
+    schedule_reliability: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Per-schedule reliability: name, consecutive_failures, success_rate, total_runs",
+    )
+    total_runs: int = 0
+    total_successes: int = 0
+    total_failures: int = 0
+
+
+class DetailedMetrics(BaseModel):
+    """Combined detailed metrics for all three categories."""
+
+    sessions: SessionMetricsDetail = Field(default_factory=SessionMetricsDetail)
+    tool_calls: ToolCallMetricsDetail = Field(default_factory=ToolCallMetricsDetail)
+    schedules: ScheduleMetricsDetail = Field(default_factory=ScheduleMetricsDetail)
+
+
+class DailyDetailMetrics(BaseModel):
+    """Detailed metrics for a single day, shown in drill-down view."""
+
+    date: str
+
+    # Sessions
+    sessions: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Sessions on this day: id, instruction, status, duration, tool_calls, tokens, cost",
+    )
+    session_count: int = 0
+    completed_count: int = 0
+    failed_count: int = 0
+
+    # Token summary for the day
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    total_cost: float = 0.0
+
+    # Duration summary
+    avg_duration: float = 0.0
+    min_duration: float = 0.0
+    max_duration: float = 0.0
+
+    # Tool calls
+    tool_calls: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Tool calls on this day: tool_name, status, duration_ms, session_id, error",
+    )
+    total_tool_calls: int = 0
+    total_tool_errors: int = 0
+
+    # Schedule runs
+    schedule_runs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Schedule runs on this day: schedule_id, name, session_id, status, duration, trigger_reason",
+    )
+    total_schedule_runs: int = 0

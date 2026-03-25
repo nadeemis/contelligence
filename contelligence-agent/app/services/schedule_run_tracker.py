@@ -85,6 +85,7 @@ class ScheduleRunTracker:
             }
 
             session_id = await self.agent_service.create_and_run(
+                session_id=f"schedule-{schedule.id}-{datetime.now().strftime('%Y%m%d%H%M%S')}",  # Use schedule ID as session ID for easier correlation
                 instruction=schedule.instruction,
                 options=schedule.options,
                 metadata=metadata,

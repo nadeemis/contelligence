@@ -1,12 +1,11 @@
 ---
 name: invoice-processing
-description: "Extracts and validates invoice data from PDF, DOCX, and XLSX files. Handles multi-page invoices, line-item tables, and multi-currency amounts. Use when processing invoices, purchase orders, billing documents, or when the user mentions invoices, POs, or billing."
-license: Proprietary
-compatibility: Contelligence v1.0+
+description: >
+  Extracts and validates invoice data from PDF, DOCX, and XLSX files. Handles multi-page invoices, line-item tables, and multi-currency amounts. Use when processing invoices, purchase orders, billing documents, or when the user mentions invoices, POs, or billing.
+license: MIT
 metadata:
-  author: finance-team
-  version: "2.1"
-  category: finance
+  version: "1.0.0"
+  tags: ["finance"]
 ---
 
 # Invoice Processing

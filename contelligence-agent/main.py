@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -39,12 +40,13 @@ def create_app(settings: AppSettings) -> FastAPI:
 
     from app.routers import admin, agent, health
     from app.routers import agents as agents_router
-    from app.routers import dashboard, events, schedules, skills, webhooks
+    from app.routers import dashboard, events, mcp_servers, schedules, skills, webhooks
 
     prefix = f"/api/{settings.API_VERSION}"
     
     app.include_router(agent.router, prefix=prefix)
     app.include_router(agents_router.router, prefix=prefix)
+    app.include_router(mcp_servers.router, prefix=prefix)
     app.include_router(health.router, prefix=prefix)
     app.include_router(admin.router, prefix=prefix)
     # Scheduling Engine routers
@@ -89,12 +91,26 @@ settings: AppSettings = get_settings()
 app = create_app(settings)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", 
-                reload=settings.LOG_LEVEL == "DEBUG",
-                host=settings.API_HOST,
-                port=settings.API_PORT,
-                workers=1,
-                use_colors=True,
-                log_config=None,
-                log_level=settings.LOG_LEVEL == "DEBUG" and "debug" or "info",
-    )
+    if getattr(sys, 'frozen', False):
+        # PyInstaller frozen binary — pass app object directly
+        # (import string "main:app" doesn't work when code is frozen)
+        uvicorn.run(app,
+                    host=settings.API_HOST,
+                    port=settings.API_PORT,
+                    workers=1,
+                    use_colors=True,
+                    log_config=None,
+                    log_level="debug" if settings.LOG_LEVEL == "DEBUG" else "info",
+                    limit_max_requests=10_000,
+        )
+    else:
+        uvicorn.run("main:app", 
+                    reload=settings.LOG_LEVEL == "DEBUG",
+                    host=settings.API_HOST,
+                    port=settings.API_PORT,
+                    workers=1,
+                    use_colors=True,
+                    log_config=None,
+                    log_level="debug" if settings.LOG_LEVEL == "DEBUG" else "info",
+                    limit_max_requests=10_000,
+        )

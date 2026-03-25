@@ -29,7 +29,7 @@ MANIFEST
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
+
 
 # Installer logs
 pip-log.txt
@@ -206,9 +206,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+resources/
 
 gitignore*
 # Copilot CLI session state (docker volume bind mount)
 .copilot-session-state
 !.copilot-session-state/.gitkeep
 .workspace
+.shared-skills

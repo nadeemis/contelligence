@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import Request
 
 from app.connectors.blob_connector import BlobConnectorAdapter
-from app.connectors.cosmos_connector import CosmosConnectorAdapter
 from app.connectors.doc_intelligence_connector import DocIntelligenceConnectorAdapter
 from app.connectors.openai_connector import OpenAIConnectorAdapter
 from app.connectors.search_connector import SearchConnectorAdapter
@@ -35,8 +36,14 @@ def get_search_connector(request: Request) -> SearchConnectorAdapter:
     return request.app.state.search_connector
 
 
-def get_cosmos_connector(request: Request) -> CosmosConnectorAdapter:
-    return request.app.state.cosmos_connector
+def get_cosmos_connector(request: Request) -> Any:
+    """Return the storage manager (replaces the old cosmos connector dep)."""
+    return request.app.state.storage_manager
+
+
+def get_storage_manager(request: Request) -> Any:
+    """Return the ``StorageManager`` singleton."""
+    return request.app.state.storage_manager
 
 
 def get_doc_intelligence_connector(request: Request) -> DocIntelligenceConnectorAdapter:
@@ -47,13 +54,7 @@ def get_openai_connector(request: Request) -> OpenAIConnectorAdapter:
     return request.app.state.openai_connector
 
 
-# Delegation and approval
-
-def get_delegator(request: Request):
-    """Return the ``AgentDelegator`` singleton."""
-    from app.services.delegator import AgentDelegator
-    return request.app.state.delegator
-
+# approval
 
 def get_approval_manager(request: Request):
     """Return the ``ApprovalManager`` singleton."""
@@ -76,6 +77,11 @@ def get_token_manager(request: Request):
 def get_scheduler(request: Request):
     """Return the ``SchedulerLeaderElection`` singleton (or ``None``)."""
     return getattr(request.app.state, "scheduler", None)
+
+
+def get_prompt_store(request: Request):
+    """Return the ``PromptStore`` singleton (or ``None`` if not initialised)."""
+    return getattr(request.app.state, "prompt_store", None)
 
 
 # Custom Agent Management — agent store, dynamic registry, tool registry

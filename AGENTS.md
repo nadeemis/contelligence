@@ -4,10 +4,11 @@ Contelligence is an AI-native, agentic content intelligence platform powered by 
 
 ## Project structure
 
-This is a two-service monorepo deployed via Azure Developer CLI (`azd`).
+This is a three-service monorepo deployed via Azure Developer CLI (`azd`).
 
 - `contelligence-agent/` — Python/FastAPI backend (REST API, agent orchestration, Azure connectors)
 - `contelligence-web/` — React/TypeScript frontend (SPA with Vite, Tailwind, Shadcn/ui)
+- `contelligence-cowork/` — Electron desktop app (bundles the Python backend as a native macOS/Windows/Linux app)
 - `infra/` — Azure infrastructure-as-code (Bicep)
 - `docs/` — Architecture docs, specs, and plans
 - `.github/skills/` — Copilot skills (code-free domain knowledge)
@@ -15,6 +16,7 @@ This is a two-service monorepo deployed via Azure Developer CLI (`azd`).
 
 For backend internals, see [contelligence-agent/AGENTS.md](contelligence-agent/AGENTS.md).
 For frontend internals, see [contelligence-web/AGENTS.md](contelligence-web/AGENTS.md).
+For desktop app internals, see [contelligence-cowork/AGENTS.md](contelligence-cowork/AGENTS.md).
 
 ## Setup commands
 
@@ -28,6 +30,16 @@ uvicorn main:app --reload --port 8081
 cd contelligence-web
 npm install
 npm run dev
+
+# Desktop app — install deps and start dev server
+cd contelligence-cowork
+npm install
+npm start
+
+# Desktop app — build distributable (requires PyInstaller backend first)
+./scripts/build-cowork.sh            # both backend + desktop
+./scripts/build-cowork.sh backend    # PyInstaller binary only
+./scripts/build-cowork.sh cowork     # Electron package only
 
 # Full stack — Docker Compose (includes Copilot CLI + Azure MCP sidecar)
 docker compose -f docker-compose.agent.yml up --build

@@ -11,14 +11,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from azure.cosmos.aio import CosmosClient
 from azure.cosmos.exceptions import CosmosHttpResponseError, CosmosResourceNotFoundError
 
 from app.models.exceptions import SessionNotFoundError
 from app.models.session_models import (
     ConversationTurn,
     DelegationRecord,
-    OutputArtifact,
     SessionEvent,
     SessionMetrics,
     SessionRecord,
@@ -49,6 +47,7 @@ async def _safe_cosmos_read(coro: Any, not_found_msg: str = "Resource not found"
 # SessionStore
 # ---------------------------------------------------------------------------
 
+from app.store.storage_manager import StorageManager
 
 class SessionStore:
     """Data access layer for session persistence in Cosmos DB.
@@ -62,19 +61,16 @@ class SessionStore:
 
     def __init__(
         self,
-        cosmos_client: CosmosClient,
-        database_name: str = "contelligence-agent",
+        storage_manager: StorageManager,
     ) -> None:
-        db = cosmos_client.get_database_client(database_name)
-        self.sessions = db.get_container_client("sessions")
-        self.conversation = db.get_container_client("conversation")
-        self.outputs = db.get_container_client("outputs")
-        self.events = db.get_container_client("events")
 
+        self.sessions = storage_manager.get_container("sessions")
+        self.conversation = storage_manager.get_container("conversation")
+        self.events = storage_manager.get_container("events")
+        
     # ------------------------------------------------------------------
     # Sessions container
     # ------------------------------------------------------------------
-
     async def save_session(self, record: SessionRecord) -> None:
         """Upsert a ``SessionRecord`` (create or full-replace)."""
         await self.sessions.upsert_item(to_cosmos_dict(record))
@@ -176,7 +172,6 @@ class SessionStore:
         session_id: str,
         tool_name: str,
         result: dict[str, Any] | None,
-        result_blob_ref: str | None,
         completed_at: datetime,
         status: str,
         error: str | None = None,
@@ -200,7 +195,6 @@ class SessionStore:
             turn = ConversationTurn.model_validate(item)
             if turn.tool_call is not None:
                 turn.tool_call.result = result
-                turn.tool_call.result_blob_ref = result_blob_ref
                 turn.tool_call.completed_at = completed_at
                 turn.tool_call.duration_ms = int(
                     (completed_at - turn.tool_call.started_at).total_seconds() * 1000
@@ -212,68 +206,7 @@ class SessionStore:
             break
 
     # ------------------------------------------------------------------
-    # Outputs container
-    # ------------------------------------------------------------------
-
-    async def save_output(self, artifact: OutputArtifact) -> None:
-        """Upsert an output artifact."""
-        await self.outputs.upsert_item(to_cosmos_dict(artifact))
-
-    async def get_outputs(self, session_id: str) -> list[OutputArtifact]:
-        """Retrieve all output artifacts for a session, ordered by creation time."""
-        query = "SELECT * FROM c WHERE c.session_id = @sid ORDER BY c.created_at ASC"
-        params = [{"name": "@sid", "value": session_id}]
-        items = self.outputs.query_items(
-            query=query,
-            parameters=params,
-            partition_key=session_id,
-        )
-        return [OutputArtifact.model_validate(item) async for item in items]
-
-    async def get_output(self, session_id: str, output_id: str) -> OutputArtifact:
-        """Point-read a specific output artifact."""
-        item = await _safe_cosmos_read(
-            self.outputs.read_item(item=output_id, partition_key=session_id),
-            not_found_msg=f"Output {output_id} in session {session_id}",
-        )
-        return OutputArtifact.model_validate(item)
-
-    # ------------------------------------------------------------------
-    # Delegation tracking (Phase 3)
-    # ------------------------------------------------------------------
-
-    async def append_delegation(
-        self,
-        session_id: str,
-        record: DelegationRecord,
-    ) -> None:
-        """Append a delegation record to the parent session."""
-        session = await self.get_session(session_id)
-        session.delegations.append(record)
-        session.updated_at = datetime.now(timezone.utc)
-        await self.save_session(session)
-
-    async def update_delegation_status(
-        self,
-        session_id: str,
-        sub_session_id: str,
-        status: str,
-        result_summary: str | None = None,
-    ) -> None:
-        """Update the status of a delegation record within the parent session."""
-        session = await self.get_session(session_id)
-        for delegation in session.delegations:
-            if delegation.sub_session_id == sub_session_id:
-                delegation.status = status  # type: ignore[assignment]
-                delegation.completed_at = datetime.now(timezone.utc).isoformat()
-                if result_summary is not None:
-                    delegation.result_summary = result_summary
-                break
-        session.updated_at = datetime.now(timezone.utc)
-        await self.save_session(session)
-
-    # ------------------------------------------------------------------
-    # Phase 4 — Retention cleanup operations
+    # Retention cleanup operations
     # ------------------------------------------------------------------
 
     async def delete_turns(self, session_id: str) -> int:
@@ -286,21 +219,6 @@ class SessionStore:
         count = 0
         async for item in items:
             await self.conversation.delete_item(
-                item=item["id"], partition_key=session_id,
-            )
-            count += 1
-        return count
-
-    async def delete_outputs(self, session_id: str) -> int:
-        """Delete all output artifact records for a session.  Returns count."""
-        query = "SELECT c.id FROM c WHERE c.session_id = @sid"
-        params = [{"name": "@sid", "value": session_id}]
-        items = self.outputs.query_items(
-            query=query, parameters=params, partition_key=session_id,
-        )
-        count = 0
-        async for item in items:
-            await self.outputs.delete_item(
                 item=item["id"], partition_key=session_id,
             )
             count += 1
@@ -355,7 +273,7 @@ class SessionStore:
         return count
 
     # ------------------------------------------------------------------
-    # Session document
+    # Session deletion (cleanup)
     # ------------------------------------------------------------------
 
     async def delete_session(self, session_id: str) -> None:

@@ -93,11 +93,10 @@ class AsyncIterator:
 
 
 @pytest.fixture()
-def mock_cosmos_client() -> MagicMock:
-    """Create a mocked Cosmos client with database and container clients.
+def mock_storage_manager() -> MagicMock:
+    """Create a mocked StorageManager with container clients.
 
-    ``get_database_client`` and ``get_container_client`` are **sync** methods
-    on the Azure Cosmos async SDK, so we use ``MagicMock`` for those layers.
+    ``get_container`` is a **sync** method that returns container clients.
     The container-level operations (upsert_item, read_item, …) **are** async,
     so we keep them as ``AsyncMock``.
 
@@ -105,8 +104,9 @@ def mock_cosmos_client() -> MagicMock:
     directly (not a coroutine), so we override it with a plain ``MagicMock``
     whose ``return_value`` can be set to an ``AsyncIterator``.
     """
-    client = MagicMock()
-    db = MagicMock()
+    from app.store.storage_manager import StorageManager
+
+    manager = MagicMock(spec=StorageManager)
     schedules_container = AsyncMock()
     runs_container = AsyncMock()
 
@@ -114,30 +114,27 @@ def mock_cosmos_client() -> MagicMock:
     schedules_container.query_items = MagicMock(return_value=AsyncIterator([]))
     runs_container.query_items = MagicMock(return_value=AsyncIterator([]))
 
-    client.get_database_client.return_value = db
-    db.get_container_client.side_effect = lambda name: {
+    manager.get_container.side_effect = lambda name: {
         "schedules": schedules_container,
         "schedule-runs": runs_container,
     }[name]
 
-    return client
+    return manager
 
 
 @pytest.fixture()
-def schedule_store(mock_cosmos_client: MagicMock) -> ScheduleStore:
-    return ScheduleStore(mock_cosmos_client, "contelligence-agent")
+def schedule_store(mock_storage_manager: MagicMock) -> ScheduleStore:
+    return ScheduleStore(mock_storage_manager)
 
 
 @pytest.fixture()
-def schedules_container(mock_cosmos_client: MagicMock) -> AsyncMock:
-    db = mock_cosmos_client.get_database_client.return_value
-    return db.get_container_client("schedules")
+def schedules_container(mock_storage_manager: MagicMock) -> AsyncMock:
+    return mock_storage_manager.get_container("schedules")
 
 
 @pytest.fixture()
-def runs_container(mock_cosmos_client: MagicMock) -> AsyncMock:
-    db = mock_cosmos_client.get_database_client.return_value
-    return db.get_container_client("schedule-runs")
+def runs_container(mock_storage_manager: MagicMock) -> AsyncMock:
+    return mock_storage_manager.get_container("schedule-runs")
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,9 @@ Provides ``get_current_user`` (mandatory auth) and
 
 from __future__ import annotations
 
+import getpass
 import logging
+import os
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -28,15 +30,32 @@ def _extract_bearer_token(request: Request) -> str | None:
     return None
 
 
+def _get_local_os_user() -> User:
+    """Build a User from the local OS account details."""
+    username = getpass.getuser()
+    uid = username if username else (str(os.getuid()) if hasattr(os, "getuid") else "unknown")
+    return User(
+        oid=f"local-{uid}",
+        name=username,
+        email=f"{username}@localhost",
+        roles=[Role.ADMIN],
+        tenant_id="local",
+    )
+
+
 async def get_current_user(
     request: Request,
     settings: AppSettings = Depends(get_settings),
 ) -> User:
     """FastAPI dependency — returns validated ``User`` or raises 401.
 
-    When ``AUTH_ENABLED`` is ``False`` (dev mode), returns a synthetic
-    admin user.
+    When ``STORAGE_MODE`` is ``"local"``, returns a user derived from the
+    local OS account.  When ``AUTH_ENABLED`` is ``False`` (dev mode),
+    returns a synthetic admin user.
     """
+    if settings.STORAGE_MODE == "local":
+        return _get_local_os_user()
+
     if not settings.AUTH_ENABLED:
         return User(
             oid="dev-user",
@@ -68,35 +87,6 @@ async def get_current_user(
         )
 
     return result.user
-
-
-async def get_optional_user(
-    request: Request,
-    settings: AppSettings = Depends(get_settings),
-) -> User | None:
-    """FastAPI dependency — returns ``User`` if a valid token is
-    present, ``None`` otherwise.  Never raises.
-    """
-    if not settings.AUTH_ENABLED:
-        return User(
-            oid="dev-user",
-            name="Developer",
-            email="dev@local",
-            roles=[Role.ADMIN],
-            tenant_id="dev",
-        )
-
-    token = _extract_bearer_token(request)
-    if not token:
-        return None
-
-    result = await validate_token(
-        token,
-        tenant_id=settings.AZURE_AD_TENANT_ID,
-        client_id=settings.AZURE_AD_CLIENT_ID,
-    )
-    return result.user if result.valid else None
-
 
 def require_role(role: Role) -> Any:
     """Dependency factory — ensures the caller has a specific role."""

@@ -9,14 +9,18 @@ from pydantic import BaseModel
 
 from app.core.tool_registry import ToolDefinition
 from app.tools import ALL_TOOLS, EXTRACTION_TOOLS, STORAGE_TOOLS, AI_TOOLS, AGENT_TOOLS
+from app.tools.skills import SKILL_TOOLS
+from app.tools.devops import DEVOPS_TOOLS
+from app.tools.powerbi import POWERBI_TOOLS
+from app.tools.desktop import DESKTOP_TOOLS
 
 
 class TestAllToolsCollection:
     """Verify the aggregated ALL_TOOLS list."""
 
     def test_total_tool_count(self) -> None:
-        """ALL_TOOLS should contain exactly 15 tool definitions."""
-        assert len(ALL_TOOLS) == 15
+        """ALL_TOOLS should contain exactly 27 tool definitions."""
+        assert len(ALL_TOOLS) == 27
 
     def test_extraction_tools_count(self) -> None:
         assert len(EXTRACTION_TOOLS) == 7
@@ -32,7 +36,9 @@ class TestAllToolsCollection:
 
     def test_all_tools_equals_sum_of_parts(self) -> None:
         assert len(ALL_TOOLS) == (
-            len(EXTRACTION_TOOLS) + len(STORAGE_TOOLS) + len(AI_TOOLS) + len(AGENT_TOOLS)
+            len(EXTRACTION_TOOLS) + len(STORAGE_TOOLS) + len(AI_TOOLS)
+            + len(SKILL_TOOLS) + len(DEVOPS_TOOLS) + len(POWERBI_TOOLS)
+            + len(DESKTOP_TOOLS)
         )
 
     def test_all_tools_are_tool_definitions(self) -> None:
@@ -104,7 +110,19 @@ class TestExpectedToolNames:
         "upsert_cosmos",
         "query_cosmos",
         "generate_embeddings",
-        "delegate_task",
+        "read_skill",
+        "read_skill_file",
+        "run_skill_script",
+        "devops_get_work_item",
+        "devops_list_work_items",
+        "devops_query_work_items",
+        "devops_get_iterations",
+        "devops_get_project",
+        "powerbi_execute_dax_query",
+        "powerbi_get_dataset_tables",
+        "powerbi_list_datasets",
+        "powerbi_refresh_dataset",
+        "local_files",
     }
 
     def test_expected_names_match(self) -> None:

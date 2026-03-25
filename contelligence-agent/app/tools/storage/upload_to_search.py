@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.core.tool_registry import define_tool, ToolDefinition
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 
 class UploadToSearchParams(BaseModel):

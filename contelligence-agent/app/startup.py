@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import platform
 from typing import TYPE_CHECKING
+
+from pathlib import Path
 
 from app.settings import AppSettings, get_settings
 
@@ -62,11 +66,8 @@ async def _cleanup_on_startup_failure(app: FastAPI) -> None:
 
     # Close connectors
     for name in (
-        "blob_connector",
-        "search_connector",
-        "cosmos_connector",
-        "doc_intelligence_connector",
-        "openai_connector",
+        "app_storage_manager",
+        "app_storage_connector",
     ):
         connector = getattr(app.state, name, None)
         if connector is not None and hasattr(connector, "close"):
@@ -116,7 +117,6 @@ async def on_startup(app: FastAPI) -> None:
         await _cleanup_on_startup_failure(app)
         raise
 
-
 async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN001
     """Inner startup logic; separated so the caller can catch and clean up."""
     global _extraction_cache, _token_manager, _scheduler, _scheduling_engine, _run_tracker  # noqa: PLW0603
@@ -128,64 +128,96 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     configure_mcp_telemetry()
 
     # ------------------------------------------------------------------
-    # Connectors — use lazy initialisation (ensure_initialized on first use)
+    # Connectors and Storage — branch on STORAGE_MODE (azure vs. local)
+    # Provision database containers (idempotent) — Cosmos DB or SQLite
     # ------------------------------------------------------------------
-    from app.connectors.blob_connector import BlobConnectorAdapter
-    from app.connectors.cosmos_connector import CosmosConnectorAdapter
-    from app.connectors.doc_intelligence_connector import DocIntelligenceConnectorAdapter
-    from app.connectors.openai_connector import OpenAIConnectorAdapter
-    from app.connectors.search_connector import SearchConnectorAdapter
+    is_local = settings.STORAGE_MODE == "local"
 
-    blob_connector = BlobConnectorAdapter(
-        account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
-        credential_type=settings.AZURE_STORAGE_CREDENTIAL_TYPE,
-        account_key=settings.AZURE_STORAGE_KEY,
-    )
-    search_connector = SearchConnectorAdapter(
-        account_name=settings.AZURE_SEARCH_ACCOUNT_NAME,
-        credential_type=settings.AZURE_SEARCH_CREDENTIAL_TYPE,
-        api_key=settings.AZURE_SEARCH_API_KEY,
-        api_version=settings.AZURE_SEARCH_API_VERSION,
-    )
-    cosmos_connector = CosmosConnectorAdapter(
-        endpoint=settings.AZURE_COSMOS_ENDPOINT,
-        key=settings.AZURE_COSMOS_KEY,
-        database_name=settings.AZURE_COSMOS_DATABASE,
-    )
-    doc_intelligence_connector = DocIntelligenceConnectorAdapter(
-        endpoint=settings.AZURE_DOC_INTELLIGENCE_ENDPOINT,
-        key=settings.AZURE_DOC_INTELLIGENCE_KEY,
-    )
-    openai_connector = OpenAIConnectorAdapter(
-        endpoint=settings.AZURE_OPENAI_ENDPOINT,
-        key=settings.AZURE_OPENAI_KEY,
-        api_version=settings.AZURE_OPENAI_API_VERSION,
-    )
+    if is_local:
+        from pathlib import Path
 
-    app.state.blob_connector = blob_connector
-    app.state.search_connector = search_connector
-    app.state.cosmos_connector = cosmos_connector
-    app.state.doc_intelligence_connector = doc_intelligence_connector
-    app.state.openai_connector = openai_connector
+        from app.connectors.local_blob_connector import LocalBlobConnectorAdapter
+        from app.connectors.sqlite_connector import SQLiteCosmosClient
+        from app.store.storage_manager import SQLiteStorageManager
 
-    # ------------------------------------------------------------------
-    # Provision Cosmos DB containers (idempotent)
-    # ------------------------------------------------------------------
-    from app.provisioning.cosmos_provisioner import provision_cosmos_db
-    
-    await cosmos_connector.ensure_initialized()
-    
-    try:
-        await provision_cosmos_db(
-            cosmos_connector._client, settings.AZURE_COSMOS_DATABASE,
+        # Resolve data directory
+        data_dir = settings.app_data_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        blobs_dir = str(data_dir / "blobs")
+        db_path = str(data_dir / "contelligence.db")
+
+        logger.info(f"Local mode — data dir: {data_dir}, db: {db_path}")
+
+        # SQLite-backed Cosmos shim
+        sqlite_client = SQLiteCosmosClient(db_path)
+        await sqlite_client.ensure_initialized()
+
+        logger.info("SQLite tables ready (local mode).")
+        app_storage_manager = SQLiteStorageManager(
+            sqlite_client=sqlite_client,
+            database_name=settings.APP_STORAGE_DATABASE,
         )
-    except Exception as e:
-        logger.exception(f"Cosmos DB provisioning failed — {str(e)}. Ensure Cosmos DB is accessible and credentials are correct.")
-        logger.exception(e)
-        raise e
+        
+        # Store the SQLite client where stores/provisioner normally expect the Cosmos client
+        app.state.app_storage_client = sqlite_client
+
+        app_storage_connector = LocalBlobConnectorAdapter(base_dir=blobs_dir)
+        
+    else:
+        # Azure deployment — use connectors for Cosmos DB and Blob Storage
+        
+        from app.connectors.blob_connector import BlobConnectorAdapter
+        from app.connectors.cosmos_connector import CosmosConnectorAdapter
+        from app.store.storage_manager import CosmosStorageManager
+        
+        cosmos_connector = CosmosConnectorAdapter(
+            endpoint=settings.APP_STORAGE_COSMOS_ENDPOINT,
+            key=settings.APP_STORAGE_COSMOS_KEY,
+            database_name=settings.APP_STORAGE_DATABASE,
+        )
+        
+        from app.provisioning.cosmos_provisioner import provision_cosmos_db
+
+        await cosmos_connector.ensure_initialized()
+        app.state.app_storage_client = cosmos_connector._client
+
+        try:
+            await provision_cosmos_db(
+                cosmos_connector._client, settings.APP_STORAGE_DATABASE,
+            )
+        except Exception as e:
+            logger.exception(f"Cosmos DB provisioning failed — {str(e)}. Ensure Cosmos DB is accessible and credentials are correct.")
+            logger.exception(e)
+            raise e
+
+        app_storage_manager = CosmosStorageManager(
+            cosmos_connector=cosmos_connector,
+            database_name=settings.APP_STORAGE_DATABASE,
+        )
+
+        app.state.app_storage_client = None  # will be set after initialization
+        
+        app_storage_connector = BlobConnectorAdapter(
+            account_name=settings.APP_AZURE_STORAGE_ACCOUNT_NAME,
+            credential_type=settings.APP_AZURE_STORAGE_CREDENTIAL_TYPE,
+            account_key=settings.APP_AZURE_STORAGE_KEY,
+        )
+        
+    app.state.app_storage_manager = app_storage_manager
+    app.state.app_storage_connector = app_storage_connector
 
     # ------------------------------------------------------------------
-    # Tool registry — register all 14 atomic tools
+    # Prompt Store — customisable system & agent prompts
+    # ------------------------------------------------------------------
+    from app.prompts.prompt_store import PromptStore
+
+    prompt_store = PromptStore(storage_manager=app_storage_manager)
+    app.state.prompt_store = prompt_store
+    logger.info("Prompt store initialised.")
+
+    # ------------------------------------------------------------------
+    # Tool registry — register all atomic tools
     # ------------------------------------------------------------------
     from app.core.tool_registry import ToolRegistry
     from app.tools import register_all_tools
@@ -202,23 +234,21 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # Build tool context — passed to every tool handler at invocation
     # ------------------------------------------------------------------
     tool_context = {
-        "blob": blob_connector,
-        "search": search_connector,
-        "cosmos": cosmos_connector,
-        "doc_intelligence": doc_intelligence_connector,
-        "openai": openai_connector,
+        "app_storage_connector": app_storage_connector,
+        "app_storage_manager": app_storage_manager,
+        "app_storage_client": app.state.app_storage_client,  # Cosmos client or SQLite client, depending on mode
         "settings": settings,
     }
 
     # ------------------------------------------------------------------
     # Resolve GitHub token: env first, Key Vault as fallback
     # ------------------------------------------------------------------
-    from app.mcp.config import get_mcp_servers_config, resolve_github_token
+    from app.utils.github_token_helper import resolve_github_token
 
     resolved_github_token: str | None = settings.GITHUB_COPILOT_TOKEN or None
 
-    if not resolved_github_token and settings.KEY_VAULT_URL:
-        resolved_github_token = await resolve_github_token(settings.KEY_VAULT_URL)
+    if not resolved_github_token and settings.KEY_VAULT_ENDPOINT:
+        resolved_github_token = await resolve_github_token(settings.KEY_VAULT_ENDPOINT)
         if resolved_github_token:
             logger.info("GitHub token resolved from Key Vault (env not set).")
         else:
@@ -228,9 +258,29 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
             )
     elif not resolved_github_token:
         logger.warning(
-            "GITHUB_COPILOT_TOKEN not set and KEY_VAULT_URL not configured — "
+            "GITHUB_COPILOT_TOKEN not set and KEY_VAULT_ENDPOINT not configured — "
             "GitHub token unavailable."
         )
+
+    # ------------------------------------------------------------------
+    # MCP server configuration
+    # ------------------------------------------------------------------
+    from app.mcp.config import get_mcp_servers_config
+    from app.mcp.file_config import ensure_default_config
+
+    ensure_default_config()  # scaffold ~/.contelligence/mcp-config.json on first run
+    mcp_config = get_mcp_servers_config()
+
+    # if resolved_github_token and "github" in mcp_config:
+    #     mcp_config["github"]["auth"]["token"] = resolved_github_token
+    #     logger.info("GitHub MCP token set from resolved token.")
+    # elif not resolved_github_token:
+    #     logger.warning(
+    #         "GitHub PAT not resolved — GitHub MCP server will be unavailable."
+    #     )
+
+    app.state.mcp_config = mcp_config
+
 
     # ------------------------------------------------------------------
     # GitHub Copilot SDK client (via CopilotClientFactory)
@@ -243,19 +293,39 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         "auto_restart": True,
     }
 
-    if settings.COPILOT_CLI_PATH:
-        base_options["cli_path"] = settings.COPILOT_CLI_PATH
+    cli_path = settings.COPILOT_CLI_PATH
+    # On Windows, npm global installs create a shell-script wrapper without
+    # an extension that cannot be launched by subprocess directly.  The real
+    # Windows launcher is the .cmd sibling.
+    if cli_path and platform.system() == "Windows":
+        from pathlib import Path as _P
+        _cli = _P(cli_path)
+        if not _cli.suffix and _cli.with_suffix(".cmd").exists():
+            cli_path = str(_cli.with_suffix(".cmd"))
+
+    if cli_path:
+        base_options["cli_path"] = cli_path
     if settings.COPILOT_CLI_URL:
+        base_options["cli_path"] = ""  # Clear cli_path if URL is set, to avoid conflicts
         base_options["cli_url"] = settings.COPILOT_CLI_URL
 
+    logger.debug(f"Starting Copilot client using cli_path: {settings.COPILOT_CLI_PATH}" \
+            if settings.COPILOT_CLI_PATH else f"Starting Copilot client using cli_url: {settings.COPILOT_CLI_URL}" \
+            if settings.COPILOT_CLI_URL else "Starting Copilot client with default CLI path resolution.")
+    
     client_factory = CopilotClientFactory(
         base_options=base_options,
         github_token=resolved_github_token,
     )
-    await client_factory.start()
+    try:
+        await client_factory.start()
+        logger.info("Copilot SDK client started via factory.")
+    except RuntimeError as exc:
+        logger.warning(
+            "Copilot CLI startup failed — AI features will be unavailable: %s",
+            exc,
+        )
     app.state.client_factory = client_factory
-
-    logger.info("Copilot SDK client started via factory.")
 
     # ------------------------------------------------------------------
     # Skills Integration — SkillStore + SkillsManager
@@ -263,30 +333,26 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     from app.skills.store import SkillStore
     from app.skills.manager import SkillsManager
 
-    # Parse extra skill directories from comma-separated setting
-    extra_skill_dirs: list[str] = [
-        d.strip() for d in settings.EXTRA_SKILLS_DIRECTORIES.split(",") if d.strip()
-    ]
-    
     skill_store = SkillStore(
-        cosmos_client=cosmos_connector._client,
-        database_name=settings.AZURE_COSMOS_DATABASE,
+        storage_manager=app_storage_manager,
     )
     app.state.skill_store = skill_store
 
     skills_manager = SkillsManager(
         skill_store=skill_store,
-        blob_connector=blob_connector,
-        extra_skill_directories=extra_skill_dirs,
+        blob_connector=app_storage_connector,
+        settings=settings,
     )
     app.state.skills_manager = skills_manager
 
     # Inject skills_manager into tool context so skill tools can use it
     tool_context["skills_manager"] = skills_manager
 
+    logger.info(f"Synchronizing skills... to storage and shared directory {settings.AGENT_SHARED_SKILLS_DIRECTORY or '(not configured)'}")
+    
     # Ensure the skills blob container exists
     try:
-        await blob_connector.ensure_container_exists("skills")
+        await app_storage_connector.ensure_container_exists("skills")
     except Exception as e:
         logger.warning(
             "Could not ensure 'skills' blob container exists: %s", e,
@@ -294,11 +360,20 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
     # Sync built-in skills from local filesystem to Cosmos + Blob
     try:
+        logger.debug("Syncing built-in skills to storage...")
         count = await skills_manager.sync_built_in_skills()
         if count:
             logger.info("Synced %d built-in skill(s).", count)
     except Exception:
         logger.warning("Built-in skill sync failed — continuing.", exc_info=True)
+
+    # Materialize all active skills to the shared skills directory
+    try:
+        shared_count = await skills_manager.sync_skills_to_shared_directory()
+        if shared_count:
+            logger.info("Materialized %d skill(s) to shared directory.", shared_count)
+    except Exception:
+        logger.warning("Shared skills sync failed — continuing.", exc_info=True)
 
     # ------------------------------------------------------------------
     # Build Azure OpenAI provider config (BYOK) if endpoint is configured
@@ -315,21 +390,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         if settings.AZURE_OPENAI_KEY:
             provider_config["api_key"] = settings.AZURE_OPENAI_KEY
 
-    # ------------------------------------------------------------------
-    # MCP server configuration and GitHub token resolution
-    # ------------------------------------------------------------------
-    mcp_config = get_mcp_servers_config()
-
-    if resolved_github_token and "github" in mcp_config:
-        mcp_config["github"]["auth"]["token"] = resolved_github_token
-        logger.info("GitHub MCP token set from resolved token.")
-    elif not resolved_github_token:
-        logger.warning(
-            "GitHub PAT not resolved — GitHub MCP server will be unavailable."
-        )
-
-    app.state.mcp_config = mcp_config
-
+    
     # ------------------------------------------------------------------
     # Session factory & agent service
     # ------------------------------------------------------------------
@@ -343,21 +404,27 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         default_model=settings.COPILOT_MODEL,
         provider_config=provider_config,
         mcp_servers=mcp_config,
-        working_directory=settings.WORKING_DIRECTORY or None,
+        working_directory=settings.CLI_WORKING_DIRECTORY or None,
         skill_directories=skills_manager.get_skill_directories(),
     )
 
     # Preflight — fail fast if the SDK client can't complete a round-trip
-    await session_factory.verify(full_probe=True)
+    try:
+        await session_factory.verify(full_probe=True)
+    except Exception as exc:
+        logger.warning(
+            "Copilot SDK preflight check failed — agent chat will be "
+            "unavailable until a valid Copilot CLI and token are configured: %s",
+            exc,
+        )
 
     app.state.session_factory = session_factory
-
     
     # ------------------------------------------------------------------
     # Session store
     # ------------------------------------------------------------------
     session_store = SessionStore(
-        cosmos_connector._client, settings.AZURE_COSMOS_DATABASE,
+        storage_manager=app_storage_manager,
     )
     app.state.session_store = session_store
 
@@ -365,8 +432,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # Ensure agent-outputs blob container exists
     # ------------------------------------------------------------------
     try:
-        await blob_connector.ensure_initialized()
-        await blob_connector.ensure_container_exists(
+        await app_storage_connector.ensure_initialized()
+        await app_storage_connector.ensure_container_exists(
             settings.AGENT_OUTPUTS_CONTAINER,
         )
     except Exception as e:
@@ -378,35 +445,22 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         raise e
 
     # ------------------------------------------------------------------
-    # Phase 3 — Agent Delegator
-    # ------------------------------------------------------------------
-    from app.services.delegator import AgentDelegator
-
     # Custom Agent Management — AgentStore + DynamicAgentRegistry
+    # ------------------------------------------------------------------
     from app.agents.dynamic_registry import DynamicAgentRegistry
     from app.store.agent_store import AgentStore
 
     agent_store = AgentStore(
-        cosmos_client=cosmos_connector._client,
-        database_name=settings.AZURE_COSMOS_DATABASE,
+        storage_manager=app_storage_manager,
     )
     app.state.agent_store = agent_store
 
     dynamic_registry = DynamicAgentRegistry(
         agent_store=agent_store, 
-        cache_ttl_seconds=settings.DYNAMIC_REGISTRY_CACHE_TTL_SECONDS
+        cache_ttl_seconds=settings.DYNAMIC_REGISTRY_CACHE_TTL_SECONDS,
+        prompt_store=prompt_store,
         )
     app.state.dynamic_registry = dynamic_registry
-
-    delegator = AgentDelegator(
-        session_factory=session_factory,
-        session_store=session_store,
-        dynamic_registry=dynamic_registry,
-    )
-    app.state.delegator = delegator
-
-    # Inject delegator into tool_context so delegate_task tool can use it
-    tool_context["delegator"] = delegator
     
     # ------------------------------------------------------------------
     # Approval Manager
@@ -419,16 +473,23 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     app.state.approval_manager = approval_manager
 
     # ------------------------------------------------------------------
-    # PersistentAgentService (main agent orchestration service, used by API routes) — depends on session factory, store, delegator, approval manager, and dynamic registry
+    # PersistentAgentService (main agent orchestration service, used by API routes) — depends on session factory, store, approval manager, and dynamic registry
     # ------------------------------------------------------------------
-    from app.prompts.system_prompt import CONTELLIGENCE_AGENT_SYSTEM_PROMPT
     from app.services.persistent_agent_service import PersistentAgentService
-    
+
+    # Load system prompt from store (respects any prior customisation)
+    try:
+        active_system_prompt = await prompt_store.get_system_prompt_text()
+    except Exception:
+        from app.prompts.system_prompt import CONTELLIGENCE_AGENT_SYSTEM_PROMPT
+        active_system_prompt = CONTELLIGENCE_AGENT_SYSTEM_PROMPT
+        logger.warning("Failed to load system prompt from store — using built-in default.")
+
     agent_service = PersistentAgentService(
         session_factory=session_factory,
         session_store=session_store,
-        system_prompt=CONTELLIGENCE_AGENT_SYSTEM_PROMPT,
-        blob_connector=blob_connector,
+        system_prompt=active_system_prompt,
+        blob_connector=app_storage_connector,
         outputs_container=settings.AGENT_OUTPUTS_CONTAINER,
         large_result_threshold=settings.LARGE_RESULT_THRESHOLD_KB * 1024,
         approval_manager=approval_manager,
@@ -452,11 +513,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         try:
             from app.caching import ExtractionCache
 
-            await cosmos_connector.ensure_initialized()
-            db = cosmos_connector._client.get_database_client(
-                settings.AZURE_COSMOS_DATABASE,
-            )
-            cache_container = db.get_container_client("extraction-cache")
+            await app_storage_manager.ensure_initialized()
+            cache_container = app_storage_manager.get_container("extraction-cache")
             _extraction_cache = ExtractionCache(
                 container=cache_container,
                 ttl_days=settings.CACHE_TTL_DAYS,
@@ -472,7 +530,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # ------------------------------------------------------------------
     # Key Vault Token Manager
     # ------------------------------------------------------------------
-    if settings.KEY_VAULT_URL:
+    if settings.KEY_VAULT_ENDPOINT:
         try:
             from azure.identity.aio import DefaultAzureCredential
             from azure.keyvault.secrets.aio import SecretClient
@@ -481,7 +539,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
             kv_credential = DefaultAzureCredential()
             kv_client = SecretClient(
-                vault_url=settings.KEY_VAULT_URL,
+                vault_url=settings.KEY_VAULT_ENDPOINT,
                 credential=kv_credential,
             )
             _token_manager = TokenManager(secret_client=kv_client)
@@ -503,8 +561,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         from app.services.schedule_store import ScheduleStore
         from app.services.scheduling_engine import SchedulingEngine
 
-        await cosmos_connector.ensure_initialized()
-        from app.utils.instance import get_instance_id as _get_instance_id
+        await app_storage_manager.ensure_initialized()
+        from app.utils.instance import get_instance_id
 
         retention_policy = RetentionPolicy(
             session_retention_days=settings.SESSION_RETENTION_DAYS,
@@ -513,13 +571,13 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         )
         retention_cleanup = RetentionCleanup(
             session_store=session_store,
-            blob_connector=blob_connector,
+            blob_connector=app_storage_connector,
             retention_policy=retention_policy,
         )
 
         # Schedule Store
         schedule_store = ScheduleStore(
-            cosmos_connector._client, settings.AZURE_COSMOS_DATABASE,
+            storage_manager=app_storage_manager,
         )
         app.state.schedule_store = schedule_store
 
@@ -549,9 +607,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
         # Leader election with scheduling engine callbacks
         _scheduler = SchedulerLeaderElection(
-            cosmos_client=cosmos_connector._client,
-            instance_id=_get_instance_id(),
-            database_name=settings.AZURE_COSMOS_DATABASE,
+            storage_manager=app_storage_manager,
+            instance_id=get_instance_id(),
         )
 
         async def on_become_leader() -> None:
@@ -580,7 +637,18 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     logger.info(f"Startup complete. API available at http://{settings.API_HOST}:{settings.API_PORT}/{settings.API_VERSION}")
     logger.info(f"Registered tools: {', '.join(tool_registry.get_tool_names())}")
     logger.info(f"Registered MCP servers: {', '.join(mcp_config.keys()) if mcp_config else 'None'}")
-    logger.info(f"Extra skill directories: {', '.join(extra_skill_dirs) if extra_skill_dirs else 'None'}")
+    shared_dir = settings.AGENT_SHARED_SKILLS_DIRECTORY or '(not configured)'
+    cli_skills_dir = settings.CLI_SHARED_SKILLS_DIRECTORY or '(not configured)'
+    logger.info(f"Shared skills directory: {shared_dir}")
+    logger.info(f"CLI shared skills directory: {cli_skills_dir}")
+
+    # ------------------------------------------------------------------
+    # Health Watchdog — periodically probe connectors and recycle stale
+    # ones so the backend self-heals after laptop sleep / network blips.
+    # ------------------------------------------------------------------
+    asyncio.create_task(_health_watchdog(app))
+    logger.info("Health watchdog background task started.")
+
     print("\n" + "-" * 75)
     print("\n" + "-" * 75)
     banner = (
@@ -595,6 +663,99 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     print(banner)
     print("\n" + "-" * 75)
     print("\n" + "-" * 75)
+
+async def _health_watchdog(app: FastAPI) -> None:
+    """Background task that probes connectors and recycles stale ones.
+
+    Runs every 60 seconds.  After a laptop-sleep / network outage this
+    detects dead connection pools and reinitialises them so the next user
+    request succeeds without a manual restart.
+    """
+    settings = get_settings()
+    is_local = settings.STORAGE_MODE == "local"
+    interval = 60  # seconds
+
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            # --- Cosmos DB / SQLite health probe ---
+            storage_manager = getattr(app.state, "app_storage_manager", None)
+            if storage_manager is not None and not is_local:
+                # For Azure mode, attempt a lightweight query to verify
+                # the Cosmos connection pool is alive.
+                cosmos_connector = getattr(storage_manager, "_cosmos_connector", None)
+                if cosmos_connector is not None:
+                    try:
+                        db_name = cosmos_connector._resolve_database(None)
+                        db_client = cosmos_connector._client.get_database_client(db_name)
+                        await db_client.read()
+                    except Exception:
+                        logger.warning(
+                            "[health-watchdog] Cosmos DB probe failed — recycling client.",
+                            exc_info=True,
+                        )
+                        await _recycle_cosmos_connector(cosmos_connector)
+
+            # --- Blob Storage health probe (Azure mode only) ---
+            blob_connector = getattr(app.state, "app_storage_connector", None)
+            if blob_connector is not None and not is_local:
+                try:
+                    await blob_connector.list_containers()
+                except Exception:
+                    logger.warning(
+                        "[health-watchdog] Blob Storage probe failed — recycling client.",
+                        exc_info=True,
+                    )
+                    await _recycle_blob_connector(blob_connector)
+
+            # --- Copilot SDK client factory probe ---
+            client_factory = getattr(app.state, "client_factory", None)
+            if client_factory is not None:
+                try:
+                    client = client_factory._client
+                    if client is None:
+                        raise RuntimeError("Copilot client is None")
+                except Exception:
+                    logger.warning(
+                        "[health-watchdog] Copilot client unavailable — attempting restart.",
+                        exc_info=True,
+                    )
+                    try:
+                        await client_factory.start()
+                        logger.info("[health-watchdog] Copilot client restarted.")
+                    except Exception:
+                        logger.error(
+                            "[health-watchdog] Copilot client restart failed.",
+                            exc_info=True,
+                        )
+
+        except Exception:
+            logger.error("[health-watchdog] Unexpected error in watchdog loop.", exc_info=True)
+
+
+async def _recycle_cosmos_connector(connector: object) -> None:
+    """Close and re-initialise a CosmosConnectorAdapter."""
+    try:
+        await connector.close()  # type: ignore[union-attr]
+    except Exception:
+        logger.debug("[health-watchdog] Error closing Cosmos connector.", exc_info=True)
+    connector._client = None  # type: ignore[attr-defined]
+    connector._credential = None  # type: ignore[attr-defined]
+    await connector.ensure_initialized()  # type: ignore[union-attr]
+    logger.info("[health-watchdog] Cosmos connector recycled.")
+
+
+async def _recycle_blob_connector(connector: object) -> None:
+    """Close and re-initialise a BlobConnectorAdapter."""
+    try:
+        await connector.close()  # type: ignore[union-attr]
+    except Exception:
+        logger.debug("[health-watchdog] Error closing Blob connector.", exc_info=True)
+    connector._client = None  # type: ignore[attr-defined]
+    connector._credential = None  # type: ignore[attr-defined]
+    await connector.ensure_initialized()  # type: ignore[union-attr]
+    logger.info("[health-watchdog] Blob connector recycled.")
+
 
 async def on_shutdown(app: FastAPI) -> None:
     """Gracefully shut down all connectors, active sessions, and the Copilot client."""
@@ -646,7 +807,7 @@ async def on_shutdown(app: FastAPI) -> None:
     for name in (
         "blob_connector",
         "search_connector",
-        "cosmos_connector",
+        "storage_manager",
         "doc_intelligence_connector",
         "openai_connector",
     ):

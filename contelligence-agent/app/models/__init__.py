@@ -10,7 +10,6 @@ from app.models.agent_models import (
 )
 from app.models.session_models import (
     ConversationTurn,
-    OutputArtifact,
     SessionEvent,
     SessionEventType,
     SessionMetrics,
@@ -44,7 +43,6 @@ __all__ = [
     "ReplyRequest",
     # Phase 2
     "ConversationTurn",
-    "OutputArtifact",
     "SessionEventType",
     "SessionMetrics",
     "SessionRecord",

@@ -1,15 +1,15 @@
 services:
   copilot-cli:
     build:
-      context: ./infar/copilot-cli
+      context: ./infra/copilot-cli
       dockerfile: Dockerfile
     ports:
       - "4321:4321"
     environment:
       - COPILOT_GITHUB_TOKEN=${COPILOT_GITHUB_TOKEN}
     volumes:
-      - copilot-session-data:/root/.copilot/session-state
-      - workspace-data:/workspace
+      - ~/.contelligence/.copilot-session-state:/root/.copilot/session-state
+      - ~/.contelligence:/contelligence
     restart: always
     healthcheck:
       test: ["CMD", "copilot", "--version"]
@@ -28,10 +28,13 @@ services:
       - contelligence-agent/.env
     volumes:
       - ./contelligence-agent:/app
+      - ~/.contelligence:/contelligence
     environment:
       - LOG_LEVEL=DEBUG
       - AZURE_MCP_SERVER_URL=http://azure-mcp:5008
       - CLI_URL=copilot-cli:4321
+      - CLI_WORKING_DIRECTORY=/contelligence
+      - CLI_SHARED_SKILLS_DIRECTORY=/contelligence/skills
     depends_on:
       azure-mcp:
         condition: service_started
@@ -49,16 +52,3 @@ services:
       # Share Azure CLI credentials for local development
       - ${HOME}/.azure:/root/.azure:ro
 
-volumes:
-  copilot-session-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /Users/nadeemis/Projects/contelligence/.copilot-session-state
-  workspace-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /Users/nadeemis/Projects/contelligence/.workspace

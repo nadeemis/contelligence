@@ -1,92 +1,45 @@
 """MCP server configuration for Contelligence.
 
-Defines connection settings for:
-- **Azure MCP Server** (unified — 42+ Azure services via stdio or HTTP)
-- **GitHub MCP Server** (repository access via HTTP)
+All MCP servers are loaded from file-based configuration:
+- ``~/.contelligence/mcp-config.json`` (app-specific, highest priority)
+- ``~/.copilot/mcp-config.json``  (shared ecosystem, imported by default)
 
-Transport modes:
-- **stdio** (development): The MCP server runs as a subprocess inside the
-  agent container.  No ``AZURE_MCP_SERVER_URL`` env var is needed.
-- **HTTP** (production): The MCP server runs as a sidecar Container App or
-  standalone service.  Set ``AZURE_MCP_SERVER_URL`` to the server's URL.
+A default config with common servers (Azure, GitHub, Power BI) is
+scaffolded on first launch by the Cowork Electron shell.
+
+See ``docs/gitignore/MCP_CONFIG_LAYERED_LOADING.md`` for the full design.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
+
+from app.mcp.file_config import load_file_based_servers
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
+
 def get_mcp_servers_config() -> dict[str, dict[str, Any]]:
-    """Return MCP server configurations based on the current environment.
+    """Return MCP server configurations loaded from config files.
+
+    Layers (lowest → highest priority):
+    1. Shared ecosystem servers from ``~/.copilot/mcp-config.json``.
+    2. App-specific servers from ``~/.contelligence/mcp-config.json``.
+
+    Same-name entries in a higher layer replace the lower one entirely.
+    The app config may also specify an ``exclude`` list to remove servers.
 
     Returns a *mutable* dict so callers (e.g. ``startup.py``) can inject
     resolved tokens at runtime.
     """
-    azure_mcp_url = os.getenv("AZURE_MCP_SERVER_URL", "").strip()
+    servers, exclude, imported_shared = load_file_based_servers()
 
-    servers: dict[str, dict[str, Any]] = {
-        "azure": (
-            # HTTP mode for remote / production deployment
-            {
-                "type": "http",
-                "url": azure_mcp_url,
-            }
-            if azure_mcp_url
-            else
-            # stdio mode for local / development — runs as subprocess
-            {
-                "type": "stdio",
-                "command": ["azmcp", "server", "start"],
-            }
-        ),
-        "github": {
-            "type": "http",
-            "url": "https://api.githubcopilot.com/mcp/",
-            "auth": {
-                "type": "token",
-                "token_source": "keyvault",
-                "secret_name": "github-copilot-token",
-                # Resolved at startup — see ``resolve_github_token``
-                "token": "",
-            },
-        },
-    }
+    for name in exclude:
+        removed = servers.pop(name, None)
+        if removed:
+            logger.info("Excluded MCP server '%s' per app config", name)
 
-    mode = "http" if azure_mcp_url else "stdio"
-    logger.info("Azure MCP Server configured in %s mode", mode)
+    logger.info(f"Final MCP server list: {list(servers.keys())}")
     return servers
 
-
-async def resolve_github_token(key_vault_url: str) -> str:
-    """Resolve the GitHub PAT from Azure Key Vault.
-
-    Uses ``DefaultAzureCredential`` so the Container App's managed identity
-    (production) or Azure CLI credentials (development) are used
-    automatically.
-
-    Returns an empty string if the secret cannot be read — the caller
-    should log a warning and continue without the GitHub MCP server.
-    """
-    try:
-        from azure.identity.aio import DefaultAzureCredential
-        from azure.keyvault.secrets.aio import SecretClient
-
-        credential = DefaultAzureCredential()
-        client = SecretClient(vault_url=key_vault_url, credential=credential)
-        try:
-            secret = await client.get_secret("github-copilot-token")
-            return secret.value or ""
-        finally:
-            await client.close()
-            await credential.close()
-    except Exception:
-        logger.warning(
-            "Could not resolve GitHub PAT from Key Vault (%s). "
-            "GitHub MCP server will be unavailable.",
-            key_vault_url,
-            exc_info=True,
-        )
-        return ""

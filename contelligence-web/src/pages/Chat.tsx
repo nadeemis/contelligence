@@ -35,6 +35,7 @@ const Chat = () => {
   const [autoScroll, setAutoScroll] = useState(true);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryFullyExpanded, setSummaryFullyExpanded] = useState(false);
+  const [instructError, setInstructError] = useState<string | null>(null);
 
   // ── Fetch available models from backend ──
   const { data: availableModels = [] } = useQuery({
@@ -77,6 +78,19 @@ const Chat = () => {
     }
   }, [urlSessionId, sessionId, reset]);
 
+  // Auto-connect to SSE stream when navigating to an active session
+  useEffect(() => {
+    if (
+      session &&
+      urlSessionId &&
+      !isStreaming &&
+      events.length === 0 &&
+      (session.status === "active" || session.status === "waiting_approval")
+    ) {
+      connect(urlSessionId);
+    }
+  }, [session, urlSessionId, isStreaming, events.length, connect]);
+
   // Auto-scroll to bottom on new events (only when toggle is on)
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
@@ -86,6 +100,7 @@ const Chat = () => {
 
   const sendInstruction = useMutation({
     mutationFn: async (instruction: string) => {
+      setInstructError(null);
       setUserMessages((prev) => [...prev, instruction]);
       const options: { agents?: string[]; skill_ids?: string[]; model?: string } = {};
       if (selectedAgents.length > 0) options.agents = selectedAgents;
@@ -99,6 +114,9 @@ const Chat = () => {
       if (!urlSessionId) {
         navigate(`/chat/${res.session_id}`, { replace: true });
       }
+    },
+    onError: (error: Error) => {
+      setInstructError(error.message || "Failed to send instruction");
     },
   });
 
@@ -127,7 +145,7 @@ const Chat = () => {
 
   // ── Render prior conversation history (loaded from API) ──
   const renderHistory = () => {
-    if (!history || history.length === 0 || isStreaming) return null;
+    if (!history || history.length === 0) return null;
 
     const items: React.ReactNode[] = [];
 
@@ -158,6 +176,8 @@ const Chat = () => {
             startedAt={turn.tool_call.started_at}
             completedAt={turn.tool_call.completed_at}
             durationMs={turn.tool_call.duration_ms}
+            sessionId={turn.session_id}
+            sequence={turn.sequence}
           />,
         );
       } else if (turn.role === "assistant") {
@@ -266,7 +286,7 @@ const Chat = () => {
   const isSessionFinished = session && session.status !== "active" && session.status !== "waiting_approval";
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] flex-col">
+    <div className="flex h-[calc(100vh-7rem)] flex-col">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-foreground font-display tracking-wide">Chat</h1>
@@ -434,6 +454,18 @@ const Chat = () => {
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
               Sending...
+            </div>
+          )}
+
+          {instructError && (
+            <div className="flex gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-destructive/20">
+                <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+              </div>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 max-w-[80%]">
+                <p className="text-sm font-medium text-destructive">Failed to send instruction</p>
+                <p className="text-xs text-destructive/80 mt-1">{instructError}</p>
+              </div>
             </div>
           )}
         </CardContent>

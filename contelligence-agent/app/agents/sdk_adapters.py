@@ -9,13 +9,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from copilot import CustomAgentConfig
+
 from app.agents.models import AgentDefinition
 
 
 def agent_def_to_sdk_config(
     agent_def: AgentDefinition,
     mcp_servers: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> CustomAgentConfig:
     """Convert an ``AgentDefinition`` to an SDK ``CustomAgentConfig`` dict.
 
     Parameters
@@ -28,27 +30,23 @@ def agent_def_to_sdk_config(
 
     Returns
     -------
-    A dict conforming to the SDK's ``CustomAgentConfig`` TypedDict.
+    An SDK ``CustomAgentConfig`` object.
     """
-    config: dict[str, Any] = {
-        "name": agent_def.name,
-        "display_name": agent_def.display_name,
-        "description": agent_def.description,
-        "prompt": agent_def.prompt,
-    }
-
-    # Map tool names — the SDK accepts a list of tool name strings
-    if agent_def.tools:
-        config["tools"] = [t for t in agent_def.tools]
-
+    
     # Resolve MCP servers for this agent from the full config
-    if agent_def.mcp_servers and mcp_servers:
-        agent_mcp: dict[str, Any] = {}
-        for key in agent_def.mcp_servers:
-            if key in mcp_servers:
-                agent_mcp[key] = mcp_servers[key]
-        if agent_mcp:
-            config["mcp_servers"] = agent_mcp
+    agent_mcp: dict[str, Any] = {}
+    if mcp_servers:
+        for key in mcp_servers.keys():
+            agent_mcp[key] = mcp_servers[key]
+        
+    config: CustomAgentConfig = CustomAgentConfig(
+        name=agent_def.name,
+        display_name=agent_def.display_name,
+        description=agent_def.description,
+        prompt=agent_def.prompt,
+        tools=agent_def.tools or [],
+        mcp_servers=agent_mcp
+    )
 
     return config
 
@@ -56,8 +54,8 @@ def agent_def_to_sdk_config(
 def agents_to_sdk_configs(
     agents: dict[str, AgentDefinition],
     mcp_servers: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    """Convert a dict of ``AgentDefinition`` objects to SDK configs.
+) -> list[CustomAgentConfig]:
+    """Convert a dict of ``AgentDefinition`` objects to SDK CustomAgentConfig configs.
 
     Parameters
     ----------
@@ -68,7 +66,7 @@ def agents_to_sdk_configs(
 
     Returns
     -------
-    List of SDK ``CustomAgentConfig`` dicts.
+    List of SDK ``CustomAgentConfig`` objects.
     """
     return [
         agent_def_to_sdk_config(agent_def, mcp_servers)
