@@ -1,13 +1,61 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, dialog, nativeTheme } from 'electron';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import started from 'electron-squirrel-startup';
 
 import { initLogFile, fileLog, closeLogFile } from './logging';
 import { loadEnvFile } from './env';
 import { createSplashWindow, splashProgress, splashLog, closeSplash } from './splash';
-import { startBackend, waitForBackend, stopBackend, getBackendPort, getContelligenceHome } from './backend';
-import { checkCopilotCli, checkAzureLogin } from './cli-detection';
+import { startBackend, waitForBackend, stopBackend, getBackendPort, getContelligenceHome, registerPowerMonitor, startHealthPoll } from './backend';
+import { checkCopilotCli, checkAzureLogin, AzureLoginResult } from './cli-detection';
+import { resolveShellPath, getResolvedPath } from './shell-env';
+
+// ─── User Identity ──────────────────────────────────────────────────────────
+
+interface UserIdentity {
+  machine: { username: string; fullName: string };
+  azure?: { name: string; email: string; tenantId: string };
+}
+
+function resolveMachineUser(): { username: string; fullName: string } {
+  const info = os.userInfo();
+  const username = info.username;
+  let fullName = username;
+
+  if (process.platform === 'darwin') {
+    try {
+      fullName = execSync('id -F', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 3_000, encoding: 'utf-8' }).trim() || username;
+    } catch { /* fall back to username */ }
+  } else if (process.platform === 'win32') {
+    // WMIC is available on all Windows versions
+    try {
+      const raw = execSync('wmic useraccount where name="%USERNAME%" get fullname /value', {
+        stdio: ['pipe', 'pipe', 'pipe'], timeout: 5_000, encoding: 'utf-8',
+      }).trim();
+      const match = raw.match(/FullName=(.+)/i);
+      if (match?.[1]?.trim()) fullName = match[1].trim();
+    } catch { /* fall back to username */ }
+  }
+
+  return { username, fullName };
+}
+
+function resolveAzureIdentity(): UserIdentity['azure'] | undefined {
+  const env = { ...process.env, PATH: getResolvedPath() };
+  try {
+    const raw = execSync('az account show -o json', { stdio: ['pipe', 'pipe', 'pipe'], timeout: 10_000, encoding: 'utf-8', env });
+    const account = JSON.parse(raw);
+    return {
+      name: account.user?.name || '',
+      email: account.user?.name || '',
+      tenantId: account.tenantId || '',
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -136,6 +184,14 @@ ipcMain.handle('show-save-dialog', async (_event, options) => {
 // Dark mode
 ipcMain.handle('get-native-theme', () => nativeTheme.shouldUseDarkColors);
 
+// Azure CLI status (available + logged-in) — consumed by renderer for UI banners
+let azureStatusCache: AzureLoginResult = { available: false, loggedIn: false };
+ipcMain.handle('get-azure-status', () => azureStatusCache);
+
+// User identity (machine user + optional Azure identity)
+let userIdentityCache: UserIdentity = { machine: { username: '', fullName: '' } };
+ipcMain.handle('get-user-identity', () => userIdentityCache);
+
 // ─── Application Menu ───────────────────────────────────────────────────────
 
 const isMac = process.platform === 'darwin';
@@ -207,6 +263,11 @@ app.on('ready', async () => {
   createSplashWindow();
   splashProgress(5, 'Initializing\u2026');
 
+  // Resolve the user's full login-shell PATH early so all CLI detection
+  // and child-process spawning works identically whether the app was
+  // launched from Finder/Dock or from a terminal.
+  resolveShellPath();
+
   // ── Step 1: Copilot CLI check ──
   splashProgress(10, 'Checking GitHub Copilot CLI\u2026');
   let copilotCliPath = '';
@@ -222,17 +283,29 @@ app.on('ready', async () => {
     splashLog('\u26A0 Copilot CLI not found \u2014 AI features unavailable', true);
   }
 
-  // ── Step 2: Azure CLI check ──
+  // ── Step 2: Resolve user identity ──
+  userIdentityCache = { machine: resolveMachineUser() };
+  fileLog('INFO', `Machine user: ${userIdentityCache.machine.fullName} (${userIdentityCache.machine.username})`);
+
+  // ── Step 3: Azure CLI check (optional — skip gracefully if not installed) ──
   splashProgress(20, 'Checking Azure CLI\u2026');
   const azureStatus = checkAzureLogin();
-  if (azureStatus.loggedIn) {
+  azureStatusCache = azureStatus;
+  if (!azureStatus.available) {
+    fileLog('INFO', 'Azure CLI not installed — skipping');
+    splashLog('\u2014 Azure CLI not installed (optional)');
+  } else if (azureStatus.loggedIn) {
     splashLog('\u2713 Azure CLI authenticated');
+    userIdentityCache.azure = resolveAzureIdentity();
+    if (userIdentityCache.azure) {
+      fileLog('INFO', `Azure identity: ${userIdentityCache.azure.name}`);
+    }
   } else {
     fileLog('WARN', 'Azure CLI not authenticated');
     splashLog('\u26A0 Azure CLI not logged in \u2014 some features unavailable', true);
   }
 
-  // ── Step 3: Start backend ──
+  // ── Step 4: Start backend ──
   if (externalApiUrl) {
     splashProgress(80, 'Connecting to external API\u2026');
     console.log(`[main] Dev mode: using external API at ${externalApiUrl}`);
@@ -256,6 +329,10 @@ app.on('ready', async () => {
       console.log(`[main] Backend ready on port ${getBackendPort()}`);
       fileLog('INFO', `Backend ready on port ${getBackendPort()}`);
       splashLog('\u2713 Backend ready');
+
+      // Sleep/wake resilience: register power monitor + periodic health poll
+      registerPowerMonitor();
+      startHealthPoll();
     } catch (err) {
       const errMsg = `Backend startup failed: ${err}`;
       fileLog('ERROR', errMsg);

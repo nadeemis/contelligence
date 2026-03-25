@@ -444,6 +444,76 @@ class SchedulingEngine:
         logger.warning("No schedule found for webhook_id=%s", webhook_id)
         return None
 
+    # ------------------------------------------------------------------
+    # Wake Catch-up (Strategy 6)
+    # ------------------------------------------------------------------
+
+    async def catch_up_missed(self) -> list[dict[str, str]]:
+        """Fire active cron/interval schedules that missed runs during sleep.
+
+        For each active schedule whose ``next_run_at`` is in the past (but
+        within the misfire grace window), fire it once.  Returns a list of
+        ``{"schedule_id": ..., "session_id": ...}`` for each fired schedule.
+        """
+        now = datetime.now(timezone.utc)
+        fired: list[dict[str, str]] = []
+
+        try:
+            active = await self.store.get_active_schedules()
+        except Exception:
+            logger.exception("catch_up_missed: failed to load active schedules.")
+            return fired
+
+        for schedule in active:
+            if schedule.trigger.type not in (TriggerType.CRON, TriggerType.INTERVAL):
+                continue
+
+            # A schedule is "missed" if its next_run_at is in the past
+            next_run = schedule.next_run_at
+            if next_run is None:
+                next_run = self._compute_next_run(schedule)
+            if next_run is None:
+                continue
+
+            # Ensure timezone-aware comparison
+            if next_run.tzinfo is None:
+                next_run = next_run.replace(tzinfo=timezone.utc)
+
+            overdue_seconds = (now - next_run).total_seconds()
+            if overdue_seconds <= 0:
+                continue  # not overdue
+            if overdue_seconds > self._misfire_grace_time:
+                logger.info(
+                    "catch_up_missed: schedule '%s' (%s) overdue by %.0fs — "
+                    "exceeds grace %ds, skipping.",
+                    schedule.name,
+                    schedule.id,
+                    overdue_seconds,
+                    self._misfire_grace_time,
+                )
+                continue
+
+            logger.info(
+                "catch_up_missed: firing missed schedule '%s' (%s), overdue %.0fs.",
+                schedule.name,
+                schedule.id,
+                overdue_seconds,
+            )
+            session_id = await self.fire_schedule(
+                schedule.id, trigger_reason="catch_up",
+            )
+            if session_id:
+                fired.append(
+                    {"schedule_id": schedule.id, "session_id": session_id}
+                )
+
+        if fired:
+            logger.info("catch_up_missed: fired %d missed schedules.", len(fired))
+        else:
+            logger.info("catch_up_missed: no missed schedules to fire.")
+
+        return fired
+
     @staticmethod
     def _event_matches(
         source_pattern: str,

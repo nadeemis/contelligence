@@ -8,8 +8,8 @@ services:
     environment:
       - COPILOT_GITHUB_TOKEN=${COPILOT_GITHUB_TOKEN}
     volumes:
-      - copilot-session-data:/root/.copilot/session-state
-      - workspace:/contelligence
+      - ~/.contelligence/.copilot-session-state:/root/.copilot/session-state
+      - ~/.contelligence:/contelligence
     restart: always
     healthcheck:
       test: ["CMD", "copilot", "--version"]
@@ -28,7 +28,7 @@ services:
       - contelligence-agent/.env
     volumes:
       - ./contelligence-agent:/app
-      - workspace:/contelligence
+      - ~/.contelligence:/contelligence
     environment:
       - LOG_LEVEL=DEBUG
       - AZURE_MCP_SERVER_URL=http://azure-mcp:5008
@@ -52,16 +52,3 @@ services:
       # Share Azure CLI credentials for local development
       - ${HOME}/.azure:/root/.azure:ro
 
-volumes:
-  copilot-session-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HOME}/.contelligence/.copilot-session-state
-  workspace:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HOME}/.contelligence

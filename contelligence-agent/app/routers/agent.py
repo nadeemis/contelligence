@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
 from app.agents import CUSTOM_AGENTS
-from app.auth.middleware import get_current_user, get_optional_user
+from app.auth.middleware import get_current_user
 from app.auth.models import User
 from app.connectors.blob_connector import BlobConnectorAdapter
 from app.dependencies import (
@@ -53,6 +53,7 @@ async def instruct(
         else:
             # Create new session — attach user identity
             session_id = await agent_service.create_and_run(
+                session_id=f"{user.oid}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
                 instruction=body.instruction,
                 options=body.options,
                 metadata={"user_id": user.oid},
@@ -79,7 +80,7 @@ async def stream_session(
     session_id: str,
     request: Request,
     agent_service: PersistentAgentService = Depends(get_agent_service),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> EventSourceResponse:
     """Stream server-sent events for an active agent session.
 
@@ -113,6 +114,7 @@ async def reply_to_session(
     body: ReplyRequest,
     agent_service: PersistentAgentService = Depends(get_agent_service),
     approval_manager=Depends(get_approval_manager),
+    user: User = Depends(get_current_user),
 ) -> dict[str, str]:
     """Send a reply message to an active agent session.
 
@@ -257,7 +259,7 @@ async def list_sessions(
     since: datetime | None = Query(None, description="Only sessions created after this ISO timestamp"),
     limit: int = Query(50, ge=1, le=200, description="Max results to return"),
     store: SessionStore = Depends(get_session_store),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> list[SessionListItem]:
     """List sessions with optional filters, newest first.
 

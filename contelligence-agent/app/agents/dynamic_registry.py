@@ -32,6 +32,9 @@ class DynamicAgentRegistry:
     be modified or deleted through the UI.  User-created agents are loaded
     from Cosmos DB and cached with a configurable TTL.
 
+    When a ``prompt_store`` is provided, built-in agent prompts are checked
+    against the store for admin customisations before being returned.
+
     The registry is the single source of truth for the ``AgentDelegator``
     and for the system prompt generation that lists available agents.
     """
@@ -40,9 +43,11 @@ class DynamicAgentRegistry:
         self,
         agent_store: AgentStore,
         cache_ttl_seconds: int = _CACHE_TTL_SECONDS,
+        prompt_store: Any | None = None,
     ) -> None:
         self._store = agent_store
         self._cache_ttl = cache_ttl_seconds
+        self._prompt_store = prompt_store
         self._cache: dict[str, AgentDefinition] = {}
         self._user_records_cache: dict[str, AgentDefinitionRecord] = {}
         self._cache_timestamp: float = 0.0
@@ -50,17 +55,31 @@ class DynamicAgentRegistry:
 
     # ── Public API ─────────────────────────────────────────────
 
+    async def _apply_prompt_override(self, agent_def: AgentDefinition) -> AgentDefinition:
+        """If a prompt_store is configured, check for an admin override."""
+        if self._prompt_store is None:
+            return agent_def
+        try:
+            custom_text = await self._prompt_store.get_agent_prompt_text(agent_def.name)
+            if custom_text != agent_def.prompt:
+                return agent_def.model_copy(update={"prompt": custom_text})
+        except Exception:
+            pass  # fallback to original
+        return agent_def
+
     async def get_all_agents(self) -> dict[str, AgentDefinition]:
         """Return merged dict of built-in + user-created agents."""
         await self._refresh_if_stale()
-        merged = dict(CUSTOM_AGENTS)
+        merged: dict[str, AgentDefinition] = {}
+        for name, defn in CUSTOM_AGENTS.items():
+            merged[name] = await self._apply_prompt_override(defn)
         merged.update(self._cache)
         return merged
 
     async def get_agent(self, agent_id: str) -> AgentDefinition | None:
         """Look up a single agent by ID (built-in or user-created)."""
         if agent_id in CUSTOM_AGENTS:
-            return CUSTOM_AGENTS[agent_id]
+            return await self._apply_prompt_override(CUSTOM_AGENTS[agent_id])
         await self._refresh_if_stale()
         return self._cache.get(agent_id)
 

@@ -242,4 +242,20 @@ async def provision_cosmos_db(
     )
     logger.info("Container 'skills' ready (pk: /partition_key).")
 
+    # ------------------------------------------------------------------
+    # Prompt management — prompts container (pk: /id)
+    # ------------------------------------------------------------------
+    await database.create_container_if_not_exists(
+        id="prompts",
+        partition_key=PartitionKey(path="/id"),
+        indexing_policy={
+            "includedPaths": [{"path": "/*"}],
+            "excludedPaths": [
+                {"path": "/content/*"},
+                {"path": '/"_etag"/?'},
+            ],
+        },
+    )
+    logger.info("Container 'prompts' ready (pk: /id).")
+
     logger.info("Cosmos DB provisioning complete.")

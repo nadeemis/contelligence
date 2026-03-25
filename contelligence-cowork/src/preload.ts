@@ -34,4 +34,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Theme
   getNativeTheme: (): Promise<boolean> => ipcRenderer.invoke('get-native-theme'),
+
+  // Azure CLI status
+  getAzureStatus: (): Promise<{ available: boolean; loggedIn: boolean; error?: string }> =>
+    ipcRenderer.invoke('get-azure-status'),
+
+  // User identity (machine + optional Azure)
+  getUserIdentity: (): Promise<{
+    machine: { username: string; fullName: string };
+    azure?: { name: string; email: string; tenantId: string };
+  }> => ipcRenderer.invoke('get-user-identity'),
+
+  // Backend lifecycle events (sleep/wake resilience)
+  onBackendRestarted: (callback: () => void): (() => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('backend-restarted', handler);
+    return () => ipcRenderer.removeListener('backend-restarted', handler);
+  },
 });

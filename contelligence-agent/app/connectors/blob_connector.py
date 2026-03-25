@@ -29,16 +29,26 @@ class BlobConnectorAdapter:
         from azure.storage.blob.aio import BlobServiceClient
 
         account_url = f"https://{self._account_name}.blob.core.windows.net"
+
+        # Use shorter connection/read timeouts to avoid indefinite hangs on
+        # stale pooled connections after laptop sleep or network changes.
+        sdk_kwargs: dict = dict(
+            connection_timeout=10,
+            read_timeout=30,
+        )
+
         if self._account_key:
             self._client = BlobServiceClient(
-                account_url=account_url, credential=self._account_key
+                account_url=account_url, credential=self._account_key,
+                **sdk_kwargs,
             )
         else:
             from azure.identity.aio import DefaultAzureCredential
 
             self._credential = DefaultAzureCredential()
             self._client = BlobServiceClient(
-                account_url=account_url, credential=self._credential
+                account_url=account_url, credential=self._credential,
+                **sdk_kwargs,
             )
 
     async def list_blobs(

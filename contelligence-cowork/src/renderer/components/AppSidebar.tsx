@@ -31,10 +31,10 @@ const navItems = [
   { title: "Chat", url: "/chat", icon: MessageSquare },
   { title: "Sessions", url: "/sessions", icon: List },
   { title: "Schedules", url: "/schedules", icon: CalendarClock },
-  { title: "Metrics", url: "/metrics", icon: BarChart3 },
   { title: "Agents", url: "/agents", icon: Bot },
   { title: "Skills", url: "/skills", icon: BookOpen },
   { title: "MCP Servers", url: "/mcp-servers", icon: Network },
+  { title: "Metrics", url: "/metrics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

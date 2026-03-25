@@ -125,7 +125,8 @@ class SkillsManager:
         skill_path = Path(shared_dir) / skill_name
         skill_path.mkdir(parents=True, exist_ok=True)
 
-        (skill_path / "SKILL.md").write_text(skill_md_content, encoding="utf-8")
+        with skill_path.joinpath("SKILL.md").open("w", encoding="utf-8") as f:
+            f.write(skill_md_content)
 
         if extra_files:
             for relative_path, content in extra_files.items():
@@ -181,7 +182,10 @@ class SkillsManager:
                     skill_md = data.decode("utf-8")
                 except Exception:
                     if record.instructions:
-                        skill_md = record.instructions
+                        # Reconstruct full SKILL.md with frontmatter so
+                        # the materialized file is complete (record.instructions
+                        # only contains the body after the YAML fences).
+                        skill_md = _build_skill_md_from_record(record)
 
                 if skill_md:
                     # Also download extra files for this skill
@@ -203,8 +207,7 @@ class SkillsManager:
                     synced += 1
             except Exception:
                 logger.warning(
-                    "Failed to materialize skill '%s' to shared dir.",
-                    record.name,
+                    f"Failed to materialize skill '{record.name}' to shared dir."
                 )
         return synced
 
@@ -259,6 +262,7 @@ class SkillsManager:
                     metadata={
                         str(k): str(v)
                         for k, v in (fm.get("metadata") or {}).items()
+                        if not isinstance(v, (list, dict))
                     },
                     tags=_extract_tags(fm),
                     source=SkillSource.BUILT_IN,
@@ -301,17 +305,19 @@ class SkillsManager:
                         fp = skill_dir / f
                         if fp.is_file():
                             extra_files[f] = fp.read_bytes()
+                    
                     await self._materialize_to_shared(
                         skill_name, content, extra_files=extra_files or None,
                     )
                 except Exception:
-                    logger.warning("Failed to materialize built-in skill '%s' to shared dir.", skill_name)
+                    logger.warning(f"Failed to materialize built-in skill '{skill_name}' to shared dir.")
+                    raise
 
                 synced += 1
-                logger.info("Synced built-in skill '%s' (%d files).", skill_name, len(files))
+                logger.info(f"Synced built-in skill '{skill_name}' ({len(files)} files).")
 
             except Exception:
-                logger.exception("Error syncing built-in skill '%s'.", skill_dir.name)
+                logger.exception(f"Error syncing built-in skill '{skill_dir.name}'.", exc_info=True)
 
         # Refresh cache after sync
         self._cache_timestamp = 0.0
@@ -941,11 +947,68 @@ def _build_skill_md(request: CreateSkillRequest) -> str:
         frontmatter["license"] = request.license
     if request.compatibility:
         frontmatter["compatibility"] = request.compatibility
-    if request.metadata:
-        frontmatter["metadata"] = request.metadata
+    metadata = dict(request.metadata) if request.metadata else {}
+    if request.tags:
+        metadata["tags"] = request.tags
+    if metadata:
+        frontmatter["metadata"] = metadata
 
-    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+    yaml_str = _dump_frontmatter(frontmatter)
     return f"---\n{yaml_str}---\n\n{request.instructions}"
+
+
+def _build_skill_md_from_record(record: SkillRecord) -> str:
+    """Reconstruct a full SKILL.md (frontmatter + body) from a SkillRecord.
+
+    Used when blob storage is unavailable and only the parsed
+    ``record.instructions`` (body without frontmatter) is available.
+    """
+    frontmatter: dict[str, Any] = {
+        "name": record.name,
+        "description": record.description,
+    }
+
+    if record.license:
+        frontmatter["license"] = record.license
+    if record.compatibility:
+        frontmatter["compatibility"] = record.compatibility
+    metadata = dict(record.metadata) if record.metadata else {}
+    if record.tags:
+        metadata["tags"] = record.tags
+    if metadata:
+        frontmatter["metadata"] = metadata
+
+    yaml_str = _dump_frontmatter(frontmatter)
+    return f"---\n{yaml_str}---\n\n{record.instructions}"
+
+
+def _dump_frontmatter(frontmatter: dict[str, Any]) -> str:
+    """Serialize frontmatter dict to YAML with double-quoted flow-style lists."""
+    import yaml
+
+    class _Dumper(yaml.SafeDumper):
+        pass
+
+    class _QuotedStr(str):
+        """Marker for strings that should be double-quoted."""
+
+    def _represent_quoted_str(dumper: yaml.SafeDumper, data: str) -> yaml.Node:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
+
+    def _represent_list(dumper: yaml.SafeDumper, data: list) -> yaml.Node:
+        # Wrap each item so it gets double-quoted inside the flow sequence
+        quoted = [_QuotedStr(item) if isinstance(item, str) else item for item in data]
+        return dumper.represent_sequence(
+            "tag:yaml.org,2002:seq", quoted, flow_style=True,
+        )
+
+    _Dumper.add_representer(_QuotedStr, _represent_quoted_str)
+    _Dumper.add_representer(list, _represent_list)
+
+    return yaml.dump(
+        frontmatter, Dumper=_Dumper, default_flow_style=False,
+        allow_unicode=True, sort_keys=False,
+    )
 
 
 def _guess_content_type(suffix: str) -> str:

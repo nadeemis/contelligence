@@ -175,11 +175,11 @@ const Sessions = () => {
                           <Checkbox
                             checked={selected.has(s.id)}
                             onCheckedChange={() => toggleSelect(s.id)}
-                            aria-label={`Select session ${s.id.slice(0, 8)}`}
+                            aria-label={`Select session ${s.id.slice(0, 12)}`}
                           />
                         </TableCell>
-                        <TableCell className="font-mono text-primary text-sm">
-                          {s.id.slice(0, 8)}
+                        <TableCell className="font-mono text-primary text-sm truncate max-w-[180px]">
+                          {s.id}
                         </TableCell>
                         <TableCell className="text-foreground max-w-xs truncate">
                           {s.instruction}

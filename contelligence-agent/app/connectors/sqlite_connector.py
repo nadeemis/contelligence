@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS skills (
     partition_key TEXT NOT NULL,
     data TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS prompts (
+    id TEXT PRIMARY KEY,
+    partition_key TEXT NOT NULL,
+    data TEXT NOT NULL
+);
 """
 
 # Mapping from Cosmos container names to the partition key path used in Cosmos.
@@ -111,6 +117,7 @@ _PARTITION_KEY_PATHS: dict[str, str] = {
     "schedule-runs": "/schedule_id",
     "agents": "/id",
     "skills": "/partition_key",
+    "prompts": "/id",
 }
 
 

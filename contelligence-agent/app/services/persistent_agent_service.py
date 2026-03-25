@@ -231,6 +231,7 @@ class PersistentAgentService:
 
     async def create_and_run(
         self,
+        session_id: str | None,
         instruction: str,
         options: InstructOptions,
         metadata: dict[str, Any] | None = None,
@@ -240,7 +241,7 @@ class PersistentAgentService:
         Returns the session ID.
         """
         metadata = metadata or {}
-        session_id = str(uuid.uuid4())
+        session_id = session_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc)
 
         # Resolve and validate selected agents via DynamicAgentRegistry
@@ -496,7 +497,7 @@ class PersistentAgentService:
         1. Cancel the session if it is currently active in memory.
         2. Retrieve output artifacts to identify blob storage references.
         3. Delete blobs associated with the session (outputs + large results).
-        4. Delete all Cosmos DB data: turns, outputs, events, session doc.
+        4. Delete all Cosmos DB data: turns, events, session doc.
 
         Returns a summary dict with counts of deleted resources.
         """
@@ -521,9 +522,8 @@ class PersistentAgentService:
             )
 
         # 4. Delete all Cosmos documents in parallel
-        turns_deleted, outputs_deleted, events_deleted = await asyncio.gather(
+        turns_deleted, events_deleted = await asyncio.gather(
             self.store.delete_turns(session_id),
-            self.store.delete_outputs(session_id),
             self.store.delete_events(session_id),
         )
 
@@ -533,7 +533,6 @@ class PersistentAgentService:
         summary = {
             "session_id": session_id,
             "turns_deleted": turns_deleted,
-            "outputs_deleted": outputs_deleted,
             "events_deleted": events_deleted,
             "blobs_deleted": blobs_deleted,
         }

@@ -101,6 +101,7 @@ if __name__ == "__main__":
                     use_colors=True,
                     log_config=None,
                     log_level="debug" if settings.LOG_LEVEL == "DEBUG" else "info",
+                    limit_max_requests=10_000,
         )
     else:
         uvicorn.run("main:app", 
@@ -111,4 +112,5 @@ if __name__ == "__main__":
                     use_colors=True,
                     log_config=None,
                     log_level="debug" if settings.LOG_LEVEL == "DEBUG" else "info",
+                    limit_max_requests=10_000,
         )

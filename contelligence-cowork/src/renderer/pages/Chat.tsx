@@ -89,6 +89,19 @@ const Chat = () => {
     }
   }, [urlSessionId, sessionId, reset]);
 
+  // Auto-connect to SSE stream when navigating to an active session
+  useEffect(() => {
+    if (
+      session &&
+      urlSessionId &&
+      !isStreaming &&
+      events.length === 0 &&
+      (session.status === "active" || session.status === "waiting_approval")
+    ) {
+      connect(urlSessionId);
+    }
+  }, [session, urlSessionId, isStreaming, events.length, connect]);
+
   // Auto-scroll to bottom on new events (only when toggle is on)
   useEffect(() => {
     if (autoScroll && scrollRef.current) {

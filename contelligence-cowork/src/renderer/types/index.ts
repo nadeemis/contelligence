@@ -449,3 +449,20 @@ export interface SkillValidationResult {
   parsed_name: string | null;
   parsed_description: string | null;
 }
+
+// ── Prompts ───────────────────────
+export type PromptType = "system" | "agent";
+
+export interface PromptResponse {
+  id: string;
+  prompt_type: PromptType;
+  name: string;
+  content: string;
+  version: number;
+  updated_at: string;
+  is_default: boolean;
+}
+
+export interface PromptListResponse {
+  prompts: PromptResponse[];
+}

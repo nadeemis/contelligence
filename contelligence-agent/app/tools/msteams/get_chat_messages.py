@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,9 +25,29 @@ class GetChatMessagesParams(BaseModel):
     )
     top: int = Field(
         50,
-        description="Maximum number of messages to return (1–50).",
+        description="Maximum number of messages to return (1-50).",
         ge=1,
         le=50,
+    )
+    orderby: Literal[
+        "lastModifiedDateTime desc", "createdDateTime desc"
+    ] | None = Field(
+        None,
+        description=(
+            "Sort order for messages. Supported values: "
+            "'lastModifiedDateTime desc' (default server behavior) or "
+            "'createdDateTime desc'. Ascending order is not supported."
+        ),
+    )
+    filter: str | None = Field(
+        None,
+        description=(
+            "OData $filter expression for date-range filtering. "
+            "Supports lastModifiedDateTime (gt, lt) and createdDateTime (lt). "
+            "Must be used together with orderby on the same property. "
+            "Example: 'lastModifiedDateTime gt 2024-01-01T00:00:00.000Z "
+            "and lastModifiedDateTime lt 2024-02-01T00:00:00.000Z'"
+        ),
     )
     headless: bool = Field(
         True,
@@ -52,9 +72,15 @@ async def get_chat_messages(
     try:
         session = await get_session(headless=params.headless)
 
+        query_params: dict[str, str] = {"$top": str(params.top)}
+        if params.orderby:
+            query_params["$orderby"] = params.orderby
+        if params.filter:
+            query_params["$filter"] = params.filter
+
         data = await session.graph_get(
             f"/me/chats/{params.chat_id}/messages",
-            params={"$top": str(params.top)},
+            params=query_params,
         )
 
         messages = [

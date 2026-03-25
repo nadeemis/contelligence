@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle, XCircle, Activity, Monitor, Server, Database, FolderOpen, Gauge, HardDrive } from "lucide-react";
-import { healthApi } from "@/lib/api";
-import type { HealthStatus, EnvironmentInfo } from "@/types";
+import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText } from "lucide-react";
+import { toast } from "sonner";
+import { healthApi, promptsApi } from "@/lib/api";
+import { PromptEditDialog } from "@/components/PromptEditDialog";
+import type { HealthStatus, EnvironmentInfo, PromptResponse } from "@/types";
 
 /* ── System Health Panel ─────────────────── */
 
@@ -182,6 +185,93 @@ function formatKey(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* ── System Prompt Panel ──────────────────── */
+
+function SystemPromptPanel() {
+  const queryClient = useQueryClient();
+  const [editingPrompt, setEditingPrompt] = useState<PromptResponse | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const { data: prompts, isLoading } = useQuery<PromptResponse[]>({
+    queryKey: ["admin-prompts"],
+    queryFn: promptsApi.list,
+  });
+
+  const systemPrompt = prompts?.find((p) => p.prompt_type === "system");
+
+  const saveMutation = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      promptsApi.update(id, content),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-prompts"] });
+      setEditingPrompt(updated);
+      toast.success(`"${updated.name}" prompt saved`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to save prompt: ${err.message}`);
+    },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (id: string) => promptsApi.reset(id),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-prompts"] });
+      setEditingPrompt(updated);
+      toast.success(`"${updated.name}" reset to default`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to reset prompt: ${err.message}`);
+    },
+  });
+
+  if (isLoading) {
+    return <Skeleton className="h-9 w-full rounded-lg" />;
+  }
+
+  if (!systemPrompt) {
+    return <p className="text-sm text-muted-foreground">No system prompt available.</p>;
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-foreground">{systemPrompt.name}</span>
+          {systemPrompt.is_default ? (
+            <Badge variant="secondary" className="text-xs">Default</Badge>
+          ) : (
+            <Badge className="text-xs bg-primary/15 text-primary border-primary/30">Customised</Badge>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setEditingPrompt(systemPrompt);
+            setDialogOpen(true);
+          }}
+        >
+          <ScrollText className="h-3.5 w-3.5 mr-1" />
+          View / Edit
+        </Button>
+      </div>
+
+      <PromptEditDialog
+        prompt={editingPrompt}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSave={async (id, content) => {
+          await saveMutation.mutateAsync({ id, content });
+        }}
+        onReset={async (id) => {
+          await resetMutation.mutateAsync(id);
+        }}
+        isSaving={saveMutation.isPending || resetMutation.isPending}
+      />
+    </>
+  );
+}
+
 /* ── Main Page ────────────────────────────── */
 const Settings = () => {
   return (
@@ -211,6 +301,19 @@ const Settings = () => {
         </CardHeader>
         <CardContent>
           <EnvironmentPanel />
+        </CardContent>
+      </Card>
+
+      {/* System Prompt */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <ScrollText className="h-5 w-5 text-primary" />
+            System Prompt
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SystemPromptPanel />
         </CardContent>
       </Card>
 

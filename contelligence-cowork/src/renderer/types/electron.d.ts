@@ -20,6 +20,12 @@ export interface ElectronAPI {
   showOpenDialog(options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue>;
   showSaveDialog(options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue>;
   getNativeTheme(): Promise<boolean>;
+  getAzureStatus(): Promise<{ available: boolean; loggedIn: boolean; error?: string }>;
+  getUserIdentity(): Promise<{
+    machine: { username: string; fullName: string };
+    azure?: { name: string; email: string; tenantId: string };
+  }>;
+  onBackendRestarted(callback: () => void): () => void;
 }
 
 declare global {

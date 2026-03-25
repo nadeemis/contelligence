@@ -29,7 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreHorizontal, BookOpen } from "lucide-react";
+import { Plus, Search, MoreHorizontal, BookOpen, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { skillsApi } from "@/lib/api";
 import type { SkillSummary, SkillStatusType } from "@/types";
@@ -133,9 +133,12 @@ export default function Skills() {
           <Skeleton className="h-9 w-28" />
         </div>
         <Skeleton className="h-12 w-full" />
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-28 w-full" />
-        ))}
+        <Skeleton className="h-5 w-32" />
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-44 w-full" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -208,140 +211,157 @@ export default function Skills() {
         </div>
       )}
 
-      <div className="space-y-3">
-        {filtered.map((skill) => {
-          const sc =
-            statusConfig[skill.status as SkillStatusType] ??
-            statusConfig.draft;
-          const isCustom = skill.source === "user-created";
+      {(() => {
+        // Group filtered skills by category (tag)
+        const grouped = new Map<string, SkillSummary[]>();
+        for (const skill of filtered) {
+          const tags = skill.tags && skill.tags.length > 0 ? skill.tags : ["Uncategorized"];
+          for (const tag of tags) {
+            if (!grouped.has(tag)) grouped.set(tag, []);
+            grouped.get(tag)!.push(skill);
+          }
+        }
+        // Sort groups alphabetically, but keep Uncategorized last
+        const sortedGroups = [...grouped.entries()].sort(([a], [b]) => {
+          if (a === "Uncategorized") return 1;
+          if (b === "Uncategorized") return -1;
+          return a.localeCompare(b);
+        });
 
-          return (
-            <Card
-              key={skill.id}
-              className="hover:border-primary/30 transition-colors"
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="mt-0.5 text-primary shrink-0">
-                      <BookOpen className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm text-foreground font-medium">
-                          {skill.name}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={sc.className}
-                        >
+        return sortedGroups.map(([category, groupSkills]) => (
+          <div key={category} className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                {category}
+              </h2>
+              <span className="text-xs text-muted-foreground/60">({groupSkills.length})</span>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {groupSkills.map((skill) => {
+                const sc =
+                  statusConfig[skill.status as SkillStatusType] ??
+                  statusConfig.draft;
+                const isCustom = skill.source === "user-created";
+
+                return (
+                  <Card
+                    key={skill.id}
+                    className="hover:border-primary/30 transition-colors flex flex-col"
+                  >
+                    <CardContent className="p-4 flex flex-col flex-1">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <BookOpen className="h-4 w-4 text-primary shrink-0" />
+                          <span className="font-mono text-sm text-foreground font-medium truncate">
+                            {skill.name}
+                          </span>
+                        </div>
+                        {isCustom && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  navigate(`/skills/${skill.id}`)
+                                }
+                              >
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => setDeleteTarget(skill)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <Badge variant="outline" className={sc.className}>
                           {sc.label}
                         </Badge>
                         {isCustom && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px]"
-                          >
+                          <Badge variant="secondary" className="text-[10px]">
                             CUSTOM
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">
+
+                      <p className="text-sm text-muted-foreground line-clamp-2 flex-1 mb-3">
                         {skill.description}
                       </p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 flex-wrap">
-                        {skill.tags && skill.tags.length > 0 && (
-                          <span>Tags: {skill.tags.join(", ")}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate(`/skills/${skill.id}`)}
-                    >
-                      {isCustom ? "Edit" : "View"}
-                    </Button>
-                    {skill.status === "draft" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            id: skill.id,
-                            status: "active",
-                          })
-                        }
-                      >
-                        Activate
-                      </Button>
-                    )}
-                    {skill.status === "active" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            id: skill.id,
-                            status: "disabled",
-                          })
-                        }
-                      >
-                        Disable
-                      </Button>
-                    )}
-                    {skill.status === "disabled" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            id: skill.id,
-                            status: "active",
-                          })
-                        }
-                      >
-                        Enable
-                      </Button>
-                    )}
-                    {isCustom && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                      <div className="flex items-center gap-2 mt-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => navigate(`/skills/${skill.id}`)}
+                        >
+                          {isCustom ? "Edit" : "View"}
+                        </Button>
+                        {skill.status === "draft" && (
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
+                            variant="outline"
+                            size="sm"
                             onClick={() =>
-                              navigate(`/skills/${skill.id}`)
+                              updateStatusMutation.mutate({
+                                id: skill.id,
+                                status: "active",
+                              })
                             }
                           >
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeleteTarget(skill)}
+                            Activate
+                          </Button>
+                        )}
+                        {skill.status === "active" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateStatusMutation.mutate({
+                                id: skill.id,
+                                status: "disabled",
+                              })
+                            }
                           >
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                            Disable
+                          </Button>
+                        )}
+                        {skill.status === "disabled" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateStatusMutation.mutate({
+                                id: skill.id,
+                                status: "active",
+                              })
+                            }
+                          >
+                            Enable
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        ));
+      })()}
 
       {/* Delete confirmation */}
       <AlertDialog

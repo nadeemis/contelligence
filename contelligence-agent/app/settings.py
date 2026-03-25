@@ -24,7 +24,7 @@ class AppSettings(BaseSettings):
     LOCAL_DATA_DIR: str = ""       # Local data directory (SQLite DB, blobs, logs)
 
     # Working directory & skills
-    CLI_WORKING_DIRECTORY: str = ""      # CLI working directory (e.g. /workspace in Docker)
+    CLI_WORKING_DIRECTORY: str = ""      # CLI working directory (e.g. /contelligence in Docker)
     # Single writable path where all skills (built-in + user-created) are
     # materialized on disk.  The Copilot SDK and CLI discover skills from
     # this directory.  Docker: /shared/skills  |  Electron: <userData>/skills
@@ -77,7 +77,7 @@ class AppSettings(BaseSettings):
     # Scheduling Engine
     AGENT_BASE_URL: str = "http://localhost:8060"  # Base URL for webhook URLs
     SCHEDULE_AUTO_PAUSE_THRESHOLD: int = 3         # Consecutive failures before auto-pause
-    SCHEDULER_MISFIRE_GRACE_TIME: int = 60         # APScheduler misfire grace (seconds)
+    SCHEDULER_MISFIRE_GRACE_TIME: int = 28_800     # APScheduler misfire grace (seconds) — 8 h to survive sleep
 
     # ── 2. Service Endpoints & Keys ───────────────────────────────────
 

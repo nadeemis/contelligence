@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.auth.middleware import get_current_user, get_optional_user, require_role
+from app.auth.middleware import get_current_user, require_role
 from app.auth.models import Role, User
 
 
@@ -69,19 +69,6 @@ class TestGetCurrentUser:
                 result = await get_current_user(request)
                 assert result.oid == "abc"
                 assert result.is_operator is True
-
-
-class TestGetOptionalUser:
-    """Test the optional auth dependency."""
-
-    @pytest.mark.asyncio
-    async def test_no_token_returns_none(self) -> None:
-        request = _make_request()
-        with patch("app.auth.middleware.settings") as mock_settings:
-            mock_settings.AUTH_ENABLED = True
-            user = await get_optional_user(request)
-            assert user is None
-
 
 class TestRequireRole:
     """Test role-based access control."""

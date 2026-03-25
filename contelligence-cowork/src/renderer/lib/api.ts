@@ -31,6 +31,8 @@ import type {
   CreateSkillRequest,
   UpdateSkillRequest,
   SkillValidationResult,
+  PromptResponse,
+  PromptListResponse,
 } from "@/types";
 
 // Resolve API base URL: Electron IPC bridge (main process) → Vite env → /api fallback
@@ -347,5 +349,25 @@ export const skillsApi = {
   deleteFile: (id: string, path: string) =>
     apiFetch<void>(`/skills/${id}/files/${encodeURIComponent(path)}`, {
       method: "DELETE",
+    }),
+};
+
+// ── Prompts API ──────────────────────────
+export const promptsApi = {
+  list: () =>
+    apiFetch<PromptListResponse>("/admin/prompts").then((r) => r.prompts),
+
+  get: (id: string) =>
+    apiFetch<PromptResponse>(`/admin/prompts/${id}`),
+
+  update: (id: string, content: string) =>
+    apiFetch<PromptResponse>(`/admin/prompts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    }),
+
+  reset: (id: string) =>
+    apiFetch<PromptResponse>(`/admin/prompts/${id}/reset`, {
+      method: "POST",
     }),
 };

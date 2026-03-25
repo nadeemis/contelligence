@@ -79,6 +79,11 @@ def get_scheduler(request: Request):
     return getattr(request.app.state, "scheduler", None)
 
 
+def get_prompt_store(request: Request):
+    """Return the ``PromptStore`` singleton (or ``None`` if not initialised)."""
+    return getattr(request.app.state, "prompt_store", None)
+
+
 # Custom Agent Management — agent store, dynamic registry, tool registry
 
 def get_agent_store(request: Request):

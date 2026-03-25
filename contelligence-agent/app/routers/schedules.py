@@ -68,6 +68,17 @@ def _get_schedule_store(request: Request):
     return store
 
 
+def _get_scheduling_engine(request: Request):
+    """Extract the ``SchedulingEngine`` from ``app.state``."""
+    engine = getattr(request.app.state, "scheduling_engine", None)
+    if engine is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scheduling engine not available",
+        )
+    return engine
+
+
 # ---------------------------------------------------------------------------
 # CRUD Endpoints
 # ---------------------------------------------------------------------------
@@ -304,4 +315,29 @@ async def list_schedule_runs(
         schedule_id,
         limit=limit,
         status=status_filter,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wake Catch-up (Strategy 6)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/catch-up",
+    summary="Fire missed schedules after wake from sleep",
+)
+async def catch_up_missed_schedules(
+    request: Request,
+    user: User = Depends(require_role(Role.OPERATOR)),
+) -> JSONResponse:
+    """Scan active cron/interval schedules and fire any that missed
+    their window during system sleep.  Returns the list of schedules
+    that were fired along with their session IDs.
+    """
+    engine = _get_scheduling_engine(request)
+    fired = await engine.catch_up_missed()
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"fired": fired, "count": len(fired)},
     )

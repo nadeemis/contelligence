@@ -1,8 +1,9 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { Bell, User } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
+import { UserMenu } from "@/components/UserMenu";
 
 const isElectron = typeof window !== "undefined" && !!window.electronAPI;
 const isMac = isElectron && navigator.platform.toLowerCase().includes("mac");
@@ -21,9 +22,7 @@ export function AppLayout() {
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                 <Bell className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-                <User className="h-4 w-4" />
-              </Button>
+              <UserMenu />
             </div>
           </header>
           <main className="flex-1 overflow-auto p-6">

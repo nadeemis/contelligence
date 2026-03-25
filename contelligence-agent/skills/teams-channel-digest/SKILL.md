@@ -9,7 +9,7 @@ description: >
 license: MIT
 metadata:
   version: 1.0.0
-  category: productivity
+  tags: ["productivity"]
 ---
 
 # Teams Channel Digest

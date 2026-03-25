@@ -208,6 +208,15 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     app.state.app_storage_connector = app_storage_connector
 
     # ------------------------------------------------------------------
+    # Prompt Store — customisable system & agent prompts
+    # ------------------------------------------------------------------
+    from app.prompts.prompt_store import PromptStore
+
+    prompt_store = PromptStore(storage_manager=app_storage_manager)
+    app.state.prompt_store = prompt_store
+    logger.info("Prompt store initialised.")
+
+    # ------------------------------------------------------------------
     # Tool registry — register all atomic tools
     # ------------------------------------------------------------------
     from app.core.tool_registry import ToolRegistry
@@ -339,6 +348,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # Inject skills_manager into tool context so skill tools can use it
     tool_context["skills_manager"] = skills_manager
 
+    logger.info(f"Synchronizing skills... to storage and shared directory {settings.AGENT_SHARED_SKILLS_DIRECTORY or '(not configured)'}")
+    
     # Ensure the skills blob container exists
     try:
         await app_storage_connector.ensure_container_exists("skills")
@@ -349,6 +360,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
     # Sync built-in skills from local filesystem to Cosmos + Blob
     try:
+        logger.debug("Syncing built-in skills to storage...")
         count = await skills_manager.sync_built_in_skills()
         if count:
             logger.info("Synced %d built-in skill(s).", count)
@@ -433,11 +445,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         raise e
 
     # ------------------------------------------------------------------
-    # Phase 3 — Agent Delegator
-    # ------------------------------------------------------------------
-    from app.services.delegator import AgentDelegator
-
     # Custom Agent Management — AgentStore + DynamicAgentRegistry
+    # ------------------------------------------------------------------
     from app.agents.dynamic_registry import DynamicAgentRegistry
     from app.store.agent_store import AgentStore
 
@@ -448,19 +457,10 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
     dynamic_registry = DynamicAgentRegistry(
         agent_store=agent_store, 
-        cache_ttl_seconds=settings.DYNAMIC_REGISTRY_CACHE_TTL_SECONDS
+        cache_ttl_seconds=settings.DYNAMIC_REGISTRY_CACHE_TTL_SECONDS,
+        prompt_store=prompt_store,
         )
     app.state.dynamic_registry = dynamic_registry
-
-    # delegator = AgentDelegator(
-    #     session_factory=session_factory,
-    #     session_store=session_store,
-    #     dynamic_registry=dynamic_registry,
-    # )
-    # app.state.delegator = delegator
-
-    # # Inject delegator into tool_context so delegate_task tool can use it
-    # tool_context["delegator"] = delegator
     
     # ------------------------------------------------------------------
     # Approval Manager
@@ -473,15 +473,22 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     app.state.approval_manager = approval_manager
 
     # ------------------------------------------------------------------
-    # PersistentAgentService (main agent orchestration service, used by API routes) — depends on session factory, store, delegator, approval manager, and dynamic registry
+    # PersistentAgentService (main agent orchestration service, used by API routes) — depends on session factory, store, approval manager, and dynamic registry
     # ------------------------------------------------------------------
-    from app.prompts.system_prompt import CONTELLIGENCE_AGENT_SYSTEM_PROMPT
     from app.services.persistent_agent_service import PersistentAgentService
-    
+
+    # Load system prompt from store (respects any prior customisation)
+    try:
+        active_system_prompt = await prompt_store.get_system_prompt_text()
+    except Exception:
+        from app.prompts.system_prompt import CONTELLIGENCE_AGENT_SYSTEM_PROMPT
+        active_system_prompt = CONTELLIGENCE_AGENT_SYSTEM_PROMPT
+        logger.warning("Failed to load system prompt from store — using built-in default.")
+
     agent_service = PersistentAgentService(
         session_factory=session_factory,
         session_store=session_store,
-        system_prompt=CONTELLIGENCE_AGENT_SYSTEM_PROMPT,
+        system_prompt=active_system_prompt,
         blob_connector=app_storage_connector,
         outputs_container=settings.AGENT_OUTPUTS_CONTAINER,
         large_result_threshold=settings.LARGE_RESULT_THRESHOLD_KB * 1024,
@@ -634,6 +641,14 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     cli_skills_dir = settings.CLI_SHARED_SKILLS_DIRECTORY or '(not configured)'
     logger.info(f"Shared skills directory: {shared_dir}")
     logger.info(f"CLI shared skills directory: {cli_skills_dir}")
+
+    # ------------------------------------------------------------------
+    # Health Watchdog — periodically probe connectors and recycle stale
+    # ones so the backend self-heals after laptop sleep / network blips.
+    # ------------------------------------------------------------------
+    asyncio.create_task(_health_watchdog(app))
+    logger.info("Health watchdog background task started.")
+
     print("\n" + "-" * 75)
     print("\n" + "-" * 75)
     banner = (
@@ -648,6 +663,99 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     print(banner)
     print("\n" + "-" * 75)
     print("\n" + "-" * 75)
+
+async def _health_watchdog(app: FastAPI) -> None:
+    """Background task that probes connectors and recycles stale ones.
+
+    Runs every 60 seconds.  After a laptop-sleep / network outage this
+    detects dead connection pools and reinitialises them so the next user
+    request succeeds without a manual restart.
+    """
+    settings = get_settings()
+    is_local = settings.STORAGE_MODE == "local"
+    interval = 60  # seconds
+
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            # --- Cosmos DB / SQLite health probe ---
+            storage_manager = getattr(app.state, "app_storage_manager", None)
+            if storage_manager is not None and not is_local:
+                # For Azure mode, attempt a lightweight query to verify
+                # the Cosmos connection pool is alive.
+                cosmos_connector = getattr(storage_manager, "_cosmos_connector", None)
+                if cosmos_connector is not None:
+                    try:
+                        db_name = cosmos_connector._resolve_database(None)
+                        db_client = cosmos_connector._client.get_database_client(db_name)
+                        await db_client.read()
+                    except Exception:
+                        logger.warning(
+                            "[health-watchdog] Cosmos DB probe failed — recycling client.",
+                            exc_info=True,
+                        )
+                        await _recycle_cosmos_connector(cosmos_connector)
+
+            # --- Blob Storage health probe (Azure mode only) ---
+            blob_connector = getattr(app.state, "app_storage_connector", None)
+            if blob_connector is not None and not is_local:
+                try:
+                    await blob_connector.list_containers()
+                except Exception:
+                    logger.warning(
+                        "[health-watchdog] Blob Storage probe failed — recycling client.",
+                        exc_info=True,
+                    )
+                    await _recycle_blob_connector(blob_connector)
+
+            # --- Copilot SDK client factory probe ---
+            client_factory = getattr(app.state, "client_factory", None)
+            if client_factory is not None:
+                try:
+                    client = client_factory._client
+                    if client is None:
+                        raise RuntimeError("Copilot client is None")
+                except Exception:
+                    logger.warning(
+                        "[health-watchdog] Copilot client unavailable — attempting restart.",
+                        exc_info=True,
+                    )
+                    try:
+                        await client_factory.start()
+                        logger.info("[health-watchdog] Copilot client restarted.")
+                    except Exception:
+                        logger.error(
+                            "[health-watchdog] Copilot client restart failed.",
+                            exc_info=True,
+                        )
+
+        except Exception:
+            logger.error("[health-watchdog] Unexpected error in watchdog loop.", exc_info=True)
+
+
+async def _recycle_cosmos_connector(connector: object) -> None:
+    """Close and re-initialise a CosmosConnectorAdapter."""
+    try:
+        await connector.close()  # type: ignore[union-attr]
+    except Exception:
+        logger.debug("[health-watchdog] Error closing Cosmos connector.", exc_info=True)
+    connector._client = None  # type: ignore[attr-defined]
+    connector._credential = None  # type: ignore[attr-defined]
+    await connector.ensure_initialized()  # type: ignore[union-attr]
+    logger.info("[health-watchdog] Cosmos connector recycled.")
+
+
+async def _recycle_blob_connector(connector: object) -> None:
+    """Close and re-initialise a BlobConnectorAdapter."""
+    try:
+        await connector.close()  # type: ignore[union-attr]
+    except Exception:
+        logger.debug("[health-watchdog] Error closing Blob connector.", exc_info=True)
+    connector._client = None  # type: ignore[attr-defined]
+    connector._credential = None  # type: ignore[attr-defined]
+    await connector.ensure_initialized()  # type: ignore[union-attr]
+    logger.info("[health-watchdog] Blob connector recycled.")
+
 
 async def on_shutdown(app: FastAPI) -> None:
     """Gracefully shut down all connectors, active sessions, and the Copilot client."""

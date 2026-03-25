@@ -3,15 +3,20 @@
  * The backend is either a packaged PyInstaller binary (production)
  * or uvicorn running from source (development).
  */
-import { app } from 'electron';
+import { app, powerMonitor, BrowserWindow } from 'electron';
 import { execFile, ChildProcess, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileLog } from './logging';
+import { getResolvedPath } from './shell-env';
 
 let backendProcess: ChildProcess | null = null;
 let backendPort: number | null = null;
+let isShuttingDown = false;
+let lastCopilotCliPath = '';
+let healthPollTimer: ReturnType<typeof setInterval> | null = null;
+let isRecovering = false;
 
 /** Return the current backend port (for URL construction in main). */
 export function getBackendPort(): number | null {
@@ -57,42 +62,6 @@ function findAvailablePort(preferred = 8081): Promise<number> {
   });
 }
 
-/**
- * Resolve a usable PATH for child processes.
- * When the app is launched via Finder / double-click on macOS, process.env.PATH
- * is minimal (/usr/bin:/bin:/usr/sbin:/sbin). We recover the user's login
- * shell PATH so subprocesses work the same as from a terminal.
- */
-function getShellPath(): string {
-  const fallbackPath = process.env.PATH || '';
-
-  if (process.platform === 'win32') return fallbackPath;
-
-  try {
-    const loginShell = process.env.SHELL || '/bin/zsh';
-    const result = execSync(`${loginShell} -ilc 'echo $PATH'`, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 5_000,
-      encoding: 'utf-8',
-    }).trim();
-    if (result) return result;
-  } catch {
-    // Shell extraction failed — fall through
-  }
-
-  const home = app.getPath('home');
-  const extras = [
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
-    '/opt/homebrew/sbin',
-    path.join(home, '.nvm/versions/node'),
-    path.join(home, '.local/bin'),
-    '/usr/local/sbin',
-  ];
-  const merged = [...new Set([...extras, ...fallbackPath.split(path.delimiter)])];
-  return merged.filter(Boolean).join(path.delimiter);
-}
-
 /** Ensure a default .env exists in the Contelligence home directory. */
 function ensureDefaultEnvFile(): string {
   const home = getContelligenceHome();
@@ -134,6 +103,7 @@ function ensureDefaultEnvFile(): string {
 
 /** Start the Python backend process. */
 export async function startBackend(copilotCliPath: string): Promise<void> {
+  lastCopilotCliPath = copilotCliPath;
   backendPort = await findAvailablePort(8081);
   const envFile = ensureDefaultEnvFile();
   const home = getContelligenceHome();
@@ -142,7 +112,7 @@ export async function startBackend(copilotCliPath: string): Promise<void> {
   // Build child env — merge the .env file with current env
   const childEnv: Record<string, string> = { ...process.env } as Record<string, string>;
 
-  childEnv['PATH'] = getShellPath();
+  childEnv['PATH'] = getResolvedPath();
   if (copilotCliPath) {
     const cliDir = path.dirname(copilotCliPath);
     if (!childEnv['PATH'].split(path.delimiter).includes(cliDir)) {
@@ -220,6 +190,18 @@ export async function startBackend(copilotCliPath: string): Promise<void> {
     console.log(`[backend] ${msg}`);
     fileLog('WARN', `[backend] ${msg}`);
     backendProcess = null;
+
+    // Auto-restart on unexpected exit (Layer 3)
+    if (!isShuttingDown && code !== 0) {
+      fileLog('INFO', '[backend] Unexpected exit — attempting automatic restart...');
+      startBackend(lastCopilotCliPath)
+        .then(() => waitForBackend(30_000))
+        .then(() => {
+          fileLog('INFO', '[backend] Auto-restart succeeded.');
+          notifyRendererBackendRestarted();
+        })
+        .catch((err) => fileLog('ERROR', `[backend] Auto-restart failed: ${err}`));
+    }
   });
 }
 
@@ -248,6 +230,8 @@ export async function waitForBackend(
 
 /** Gracefully stop the backend. */
 export function stopBackend(): void {
+  isShuttingDown = true;
+  stopHealthPoll();
   if (backendProcess && !backendProcess.killed) {
     if (process.platform === 'win32') {
       try {
@@ -265,4 +249,98 @@ export function stopBackend(): void {
     }
   }
   backendProcess = null;
+}
+
+// ─── Sleep/Wake Resilience (Layers 1–3) ─────────────────────────────────────
+
+/** Send a 'backend-restarted' message to all renderer windows. */
+function notifyRendererBackendRestarted(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('backend-restarted');
+  }
+}
+
+/** Probe backend health. If unhealthy, kill and restart it. */
+async function probeAndRecoverBackend(): Promise<void> {
+  if (isRecovering || isShuttingDown) return;
+  isRecovering = true;
+  try {
+    await waitForBackend(10_000, 1_000);
+    fileLog('INFO', '[power] Backend healthy after wake.');
+    triggerScheduleCatchUp();
+  } catch {
+    fileLog('WARN', '[power] Backend unresponsive — restarting...');
+    // Force-kill the stale process
+    const oldProcess = backendProcess;
+    backendProcess = null;
+    if (oldProcess && !oldProcess.killed) {
+      oldProcess.kill('SIGKILL');
+    }
+    try {
+      await startBackend(lastCopilotCliPath);
+      await waitForBackend(30_000, 500);
+      fileLog('INFO', '[power] Backend restarted successfully after wake.');
+      notifyRendererBackendRestarted();
+      triggerScheduleCatchUp();
+    } catch (err) {
+      fileLog('ERROR', `[power] Backend restart after wake failed: ${err}`);
+    }
+  } finally {
+    isRecovering = false;
+  }
+}
+
+/** Ask the backend to fire any schedules that missed during sleep (Strategy 6). */
+function triggerScheduleCatchUp(): void {
+  if (!backendPort) return;
+  const url = `http://127.0.0.1:${backendPort}/api/v1/schedules/catch-up`;
+  fetch(url, { method: 'POST' })
+    .then(async (resp) => {
+      if (resp.ok) {
+        const body = await resp.json();
+        fileLog('INFO', `[power] Schedule catch-up: fired ${body.count ?? 0} missed schedules.`);
+      } else {
+        fileLog('WARN', `[power] Schedule catch-up returned status ${resp.status}.`);
+      }
+    })
+    .catch((err) => {
+      fileLog('WARN', `[power] Schedule catch-up request failed: ${err}`);
+    });
+}
+
+/** Register Electron powerMonitor listeners for sleep/wake (Layer 1). */
+export function registerPowerMonitor(): void {
+  powerMonitor.on('suspend', () => {
+    fileLog('INFO', '[power] System going to sleep.');
+  });
+
+  powerMonitor.on('resume', () => {
+    fileLog('INFO', '[power] System woke up — probing backend health...');
+    probeAndRecoverBackend();
+  });
+
+  fileLog('INFO', '[power] Sleep/wake listeners registered.');
+}
+
+/** Start a periodic health poll (Layer 2). */
+export function startHealthPoll(intervalMs = 30_000): void {
+  stopHealthPoll();
+  healthPollTimer = setInterval(async () => {
+    if (!backendProcess || isRecovering || isShuttingDown) return;
+    try {
+      const resp = await fetch(`http://127.0.0.1:${backendPort}/api/v1/health`);
+      if (!resp.ok) throw new Error(`status ${resp.status}`);
+    } catch {
+      fileLog('WARN', '[healthcheck] Backend unreachable — triggering recovery...');
+      probeAndRecoverBackend();
+    }
+  }, intervalMs);
+}
+
+/** Stop the periodic health poll. */
+function stopHealthPoll(): void {
+  if (healthPollTimer) {
+    clearInterval(healthPollTimer);
+    healthPollTimer = null;
+  }
 }

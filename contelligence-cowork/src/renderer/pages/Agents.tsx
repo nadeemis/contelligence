@@ -41,10 +41,12 @@ import {
   Trash2,
   CheckCircle,
   Power,
+  ScrollText,
 } from "lucide-react";
 import { toast } from "sonner";
-import { agentsApi } from "@/lib/api";
-import type { AgentSummary, AgentStatusType } from "@/types";
+import { agentsApi, promptsApi } from "@/lib/api";
+import { PromptEditDialog } from "@/components/PromptEditDialog";
+import type { AgentSummary, AgentStatusType, PromptResponse } from "@/types";
 
 const statusConfig: Record<
   AgentStatusType | "built-in",
@@ -75,6 +77,8 @@ export default function Agents() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [deleteTarget, setDeleteTarget] = useState<AgentSummary | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState<PromptResponse | null>(null);
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
 
   // ── Fetch agents ──
   const {
@@ -89,6 +93,54 @@ export default function Agents() {
         source: sourceFilter !== "all" ? sourceFilter : undefined,
       }),
   });
+
+  // ── Prompt management ──
+  const { data: prompts = [] } = useQuery<PromptResponse[]>({
+    queryKey: ["admin-prompts"],
+    queryFn: promptsApi.list,
+  });
+
+  const promptsByAgent = new Map<string, PromptResponse>();
+  for (const p of prompts) {
+    // Map system prompt to "default" agent, agent prompts by their id
+    promptsByAgent.set(p.id, p);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      promptsApi.update(id, content),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-prompts"] });
+      setEditingPrompt(updated);
+      toast.success(`"${updated.name}" prompt saved`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to save prompt: ${err.message}`);
+    },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (id: string) => promptsApi.reset(id),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-prompts"] });
+      setEditingPrompt(updated);
+      toast.success(`"${updated.name}" reset to default`);
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to reset prompt: ${err.message}`);
+    },
+  });
+
+  const openPromptEditor = (prompt: PromptResponse) => {
+    setEditingPrompt(prompt);
+    setPromptDialogOpen(true);
+  };
+
+  const findPromptForAgent = (agent: AgentSummary): PromptResponse | undefined => {
+    // Only match agent-type prompts (system prompt is managed on Settings page)
+    const match = promptsByAgent.get(agent.id) ?? prompts.find((p) => p.name === agent.display_name);
+    return match?.prompt_type === "system" ? undefined : match;
+  };
 
   // ── Mutations ──
   const cloneMutation = useMutation({
@@ -272,6 +324,22 @@ export default function Agents() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {(() => {
+                        const prompt = findPromptForAgent(agent);
+                        return prompt ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openPromptEditor(prompt)}
+                          >
+                            <ScrollText className="h-3.5 w-3.5 mr-1" />
+                            Prompt
+                            {!prompt.is_default && (
+                              <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                            )}
+                          </Button>
+                        ) : null;
+                      })()}
                       {isCustom && (
                         <Button
                           variant="outline"
@@ -405,6 +473,20 @@ export default function Agents() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Prompt Edit Dialog */}
+      <PromptEditDialog
+        prompt={editingPrompt}
+        open={promptDialogOpen}
+        onOpenChange={setPromptDialogOpen}
+        onSave={async (id, content) => {
+          await saveMutation.mutateAsync({ id, content });
+        }}
+        onReset={async (id) => {
+          await resetMutation.mutateAsync(id);
+        }}
+        isSaving={saveMutation.isPending || resetMutation.isPending}
+      />
     </div>
   );
 }

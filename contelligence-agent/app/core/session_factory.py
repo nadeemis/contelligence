@@ -555,7 +555,7 @@ class SessionFactory:
 
     async def create_session(
         self,
-        session_id: str | None = None,
+        session_id: str,
         model: str | None = None,
         system_prompt: str = "",
         event_queue: asyncio.Queue[AgentEvent] | None = None,
@@ -572,7 +572,7 @@ class SessionFactory:
         Parameters
         ----------
         session_id:
-            Unique identifier for the session.  Generated when not provided.
+            Unique identifier for the session.  Must be provided.
         model:
             The LLM model name.  Falls back to ``self.default_model``.
         system_prompt:
@@ -604,7 +604,7 @@ class SessionFactory:
         if self._health is not None and not self._health.healthy:
             raise CopilotClientUnhealthyError(self._health)
 
-        sid = session_id or str(uuid.uuid4())
+        sid = session_id
 
         if tools_override is not None:
             copilot_tools = [self._wrap_tool(td) for td in tools_override]
