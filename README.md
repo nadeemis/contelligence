@@ -1,18 +1,9 @@
-<!-- <p align="center">
-    <h1 align="left" style="font-size:6em;">
-    <picture>
-    <img src="./assets/Contelligence-logo.png" alt="Contelligence Logo" />
-    </picture>
-    Contelligence
-    </h1>
-</p> -->
-
-<table>
+<table style="width:100%; margin-bottom: 2em; border-collapse: collapse;">
   <tr>
-    <td align="center" width="150">
+    <td>
       <picture><img src="./assets/Contelligence-logo.png" alt="Contelligence Logo" /></picture>
     </td>
-    <td align="left">
+    <td>
       <h1 style="font-size:6em;">Contelligence</h1>
     </td>
   </tr>
@@ -23,8 +14,6 @@
 GitHub Copilot is incredible for coding — but the same agentic platform that makes it brilliant at code also makes it brilliant at *work*. Summarizing documents, pulling reports, processing invoices, automating repetitive tasks — it's all just orchestration. And most people who need that help the most will never open a terminal.
 
 **That's what Contelligence does.** It brings the power of GitHub Copilot to every user — for day-to-day tasks, in plain English, right from the desktop. An AI-native, agentic content intelligence platform powered by GitHub Copilot CLI and SDK that replaces brittle pipelines with an autonomous AI agent. It reasons step-by-step, ingests any content — documents, spreadsheets, presentations, web pages, audio, images — understands data by meaning, and delivers structured intelligence. All orchestrated through natural language.
-
-**Already using MCP servers with Copilot?** Every MCP server you've configured in GitHub Copilot is automatically available to Contelligence. Azure MCP, GitHub MCP, WorkIQ MCP, or any custom server — your agent inherits the full set of capabilities without additional setup.
 
 **Two ways to run — same powerful agent:**
 
