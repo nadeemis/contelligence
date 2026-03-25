@@ -1,4 +1,9 @@
-<table style="width:100%; margin-bottom: 2em; border-collapse: collapse;">
+<style>
+  table#intro-table td {
+    border: none;
+  }
+</style>
+<table id="intro-table" style="width:100%; margin-bottom: 2em; border-collapse: collapse;">
   <tr>
     <td>
       <picture><img src="./assets/Contelligence-logo.png" alt="Contelligence Logo" /></picture>
