@@ -63,10 +63,31 @@ export function processEventsIntoTimeline(events: AgentEventUnion[]): TimelineIt
       continue;
     }
 
-    // ── Outside any turn → orphan ──────────────────────────────────
+    // ── Outside any turn ──────────────────────────────────────────
+    // When reconnecting mid-session the stream may resume without a
+    // leading turn_start.  For events that logically belong inside a
+    // turn we create an implicit one so tool grouping and usage
+    // collection still work.
     if (!currentTurn) {
-      timeline.push({ kind: "orphan", event });
-      continue;
+      const IMPLICIT_TURN_TYPES = new Set([
+        "usage_info", "assistant_usage",
+        "tool_execution_start", "tool_call_start",
+        "tool_call_complete", "tool_execution_complete",
+        "thinking", "message",
+      ]);
+      if (IMPLICIT_TURN_TYPES.has(event.type)) {
+        currentTurn = {
+          turnId: "resumed",
+          interactionId: "",
+          usageEvents: [],
+          items: [],
+        };
+        resetTracking();
+        // fall through to normal in-turn processing below
+      } else {
+        timeline.push({ kind: "orphan", event });
+        continue;
+      }
     }
 
     // ── Usage metadata ─────────────────────────────────────────────

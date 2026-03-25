@@ -54,12 +54,12 @@ function SystemHealthPanel() {
         )}
       </div>
 
-      {/* Token health */}
-      {health?.token_health && (
+      {/* Copilot CLI */}
+      {health?.copilot_cli && (
         <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-          <span className="text-sm text-foreground">Token Manager</span>
-          <Badge variant={health.token_health.status === "healthy" ? "default" : "destructive"} className="capitalize">
-            {health.token_health.status}
+          <span className="text-sm text-foreground">Copilot CLI</span>
+          <Badge variant={health.copilot_cli.status === "available" ? "default" : "destructive"} className="capitalize">
+            {health.copilot_cli.status}
           </Badge>
         </div>
       )}
@@ -72,7 +72,7 @@ function SystemHealthPanel() {
             <div key={name} className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
               <span className="text-sm text-foreground">{name}</span>
               <div className="flex items-center gap-2">
-                {info.status === "available" ? (
+                {info.status === "ok" ? (
                   <CheckCircle className="h-4 w-4 text-success" />
                 ) : (
                   <XCircle className="h-4 w-4 text-destructive" />

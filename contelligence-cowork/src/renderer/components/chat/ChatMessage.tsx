@@ -1,4 +1,4 @@
-import { Brain, Bot, Users, AlertTriangle } from "lucide-react";
+import { Brain, Bot, Users, AlertTriangle, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type {
   AgentEventUnion,
@@ -120,6 +120,32 @@ export function ChatMessage({ event, onApprove }: ChatMessageProps) {
           <div className="rounded-lg border border-success/30 bg-success/5 p-3 max-w-[80%]">
             <span className="text-success font-medium text-sm">Session complete.</span>
             {event.summary && <p className="text-sm text-muted-foreground mt-1">{event.summary}</p>}
+          </div>
+        </div>
+      );
+
+    // Metadata events — not user-facing, hide from chat
+    case "usage_info":
+    case "assistant_usage":
+    case "turn_start":
+    case "turn_end":
+      return null;
+
+    // Tool lifecycle events rendered as orphans (normally grouped inside TurnBox)
+    case "tool_call_start":
+    case "tool_call_complete":
+    case "tool_execution_start":
+    case "tool_execution_complete":
+      return (
+        <div className="flex gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <Wrench className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div className="rounded-lg border border-border bg-card p-2 max-w-[80%] flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px]">{event.type.replace(/_/g, " ")}</Badge>
+            {"tool_name" in event && (
+              <span className="text-xs font-mono text-muted-foreground">{(event as { tool_name: string }).tool_name}</span>
+            )}
           </div>
         </div>
       );

@@ -1,7 +1,7 @@
 {
-  "name": "contelligence-electron",
+  "name": "contelligence-cowork",
   "productName": "Contelligence",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Contelligence Desktop — AI-native content intelligence platform",
   "main": ".vite/build/main.js",
   "private": true,
@@ -15,7 +15,7 @@
   "keywords": [],
   "author": {
     "name": "Nadeem Ishqair",
-    "email": "nadeemis@live.com"
+    "email": "nadeemis@microsoft.com"
   },
   "license": "MIT",
   "devDependencies": {
@@ -27,22 +27,21 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
-    "@electron/fuses": "^1.8.0",
     "@tailwindcss/typography": "^0.5.16",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
-    "@vitejs/plugin-react-swc": "^3.11.0",
+    "@vitejs/plugin-react-swc": "^4.3.0",
     "autoprefixer": "^10.4.21",
-    "electron": "40.8.0",
+    "electron": "^41.0.4",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
-    "vite": "^5.4.21"
+    "vite": "^8.0.2"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

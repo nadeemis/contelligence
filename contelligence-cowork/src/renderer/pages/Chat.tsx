@@ -156,7 +156,7 @@ const Chat = () => {
 
   // ── Render prior conversation history (loaded from API) ──
   const renderHistory = () => {
-    if (!history || history.length === 0 || isStreaming) return null;
+    if (!history || history.length === 0) return null;
 
     const items: React.ReactNode[] = [];
 

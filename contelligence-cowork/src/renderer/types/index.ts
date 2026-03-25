@@ -250,9 +250,10 @@ export interface McpServerHealth {
   error?: string;
 }
 
-export interface TokenHealth {
+export interface CopilotCliHealth {
   status: string;
-  expires_at?: string;
+  auth_type?: string;
+  cli_version?: string;
 }
 
 export interface HealthStatus {
@@ -262,7 +263,7 @@ export interface HealthStatus {
   instance_id: string;
   active_sessions?: number;
   is_scheduler_leader?: boolean;
-  token_health?: TokenHealth;
+  copilot_cli?: CopilotCliHealth;
   mcp_servers?: Record<string, McpServerHealth>;
 }
 

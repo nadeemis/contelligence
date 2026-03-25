@@ -1,20 +1,18 @@
-<style>
-  table#intro-table td {
-    border: none;
-  }
-</style>
-<table id="intro-table" style="width:100%; margin-bottom: 2em; border-collapse: collapse;">
-  <tr>
-    <td>
-      <picture><img src="./assets/Contelligence-logo.png" alt="Contelligence Logo" /></picture>
-    </td>
-    <td>
-      <h1 style="font-size:6em;">Contelligence</h1>
-    </td>
-  </tr>
-</table>
+<h1><img src="./assets/Contelligence-logo.png" alt="" width="120" valign="middle" />&nbsp;&nbsp;Contelligence</h1>
+
+
 
 **GitHub Copilot changed how developers work. Contelligence brings that same power to everyone else.**
+
+
+[![Status](https://badgen.net/badge/Status/alpha/purple)](#status)
+[![Platform](https://img.shields.io/badge/Platform-GitHub%20Copilot-blue)](#what-is-contelligence)
+[![Azure](https://badgen.net/badge/Powered%20by/azure?icon=azure)](#azure-deployment--web-app)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+---
+
+## What is Contelligence?
 
 GitHub Copilot is incredible for coding — but the same agentic platform that makes it brilliant at code also makes it brilliant at *work*. Summarizing documents, pulling reports, processing invoices, automating repetitive tasks — it's all just orchestration. And most people who need that help the most will never open a terminal.
 
@@ -25,28 +23,18 @@ GitHub Copilot is incredible for coding — but the same agentic platform that m
 - **Contelligence Cowork** — Native desktop app (macOS, Windows, Linux). Install it, launch it, start talking to the agent. Zero cloud infrastructure required.
 - **Contelligence Web** — Azure-deployed web app for teams. Multi-user, enterprise-grade, with full Azure service integration.
 
----
-
-[![Azure](https://img.shields.io/badge/Azure-Powered-0078D4?logo=microsoft-azure)](https://azure.microsoft.com)
-[![Electron](https://img.shields.io/badge/Electron-40-47848F?logo=electron)](https://www.electronjs.org)
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776ab?logo=python)](https://www.python.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178c6?logo=typescript)](https://www.typescriptlang.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Modern_API-009485)](https://fastapi.tiangolo.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
----
 
 ## The Problem
 
 GitHub Copilot proved that AI can handle complex, multi-step work autonomously — for developers. But most knowledge workers are still stuck doing everything manually: summarizing documents, pulling reports, reconciling invoices, monitoring channels, filling timesheets. The tools exist to automate all of this, but they require pipelines, code, and engineering effort that everyday users will never build.
 
-The result: people spend hours on repetitive content tasks that an AI agent could handle in seconds — if only someone built the bridge.
+The result: people spend hours on repetitive content tasks that an AI agent could handle in seconds — if only someone built the bridge.  
 
 ## The Solution
 
 Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app that anyone can use. Describe what you need in **plain English** — the agent reasons about what to do, picks the right tools, connects to any MCP server for extended capabilities, ingests content from any format, understands data semantically, and delivers structured results.
 
-**No pipelines. No code. No IT tickets.**
+**No pipelines. No code.**
 
 | Aspect | Before | With Contelligence |
 |--------|--------|--------------------|
@@ -60,7 +48,12 @@ Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app t
 
 ## Contelligence Cowork — Desktop App
 
-**Contelligence Cowork** is the flagship desktop application — a fully self-contained, native experience that bundles the AI agent, backend, and UI into a single installable app. No cloud account, no Docker, no infrastructure setup. Download, install, and start processing content with AI immediately.
+[![Install for Windows](https://img.shields.io/badge/Windows-8A2BE2)](#desktop-frontend--contelligence-cowork)
+[![Install for macOS](https://img.shields.io/badge/macOS-8A2BE2)](#desktop-frontend--contelligence-cowork)
+
+**Contelligence Cowork** is the desktop application — a fully self-contained, native experience that bundles the AI agent, backend, and UI into a single installable app. No cloud account, no Docker, no infrastructure setup. Download, install, and start processing content with AI immediately.
+
+![Contelligence Cowork UI](assets/contelligence-cowork-ui.gif)
 
 ### What Cowork Does
 
@@ -76,7 +69,7 @@ Cowork puts the full power of the Contelligence agent on your desktop:
 
 ### How It Works
 
-Cowork is an Electron 40 application that **automatically launches a Python FastAPI backend** as a child process on startup. There is no manual server configuration:
+Cowork is an [Electron](https://www.electronjs.org/) application that **automatically launches a Python FastAPI backend** as a child process on startup. There is no manual server configuration:
 
 1. You launch Cowork
 2. The app finds an available port and starts the backend
@@ -90,12 +83,12 @@ Cowork is an Electron 40 application that **automatically launches a Python Fast
 │  │   React UI (Chromium renderer)     │  │
 │  │   Chat · Agents · Skills · Metrics │  │
 │  └──────────────┬─────────────────────┘  │
-│                 │ HTTP (localhost)        │
+│                 │ HTTP (localhost)       │
 │  ┌──────────────▼─────────────────────┐  │
 │  │   FastAPI Backend (child process)  │  │
 │  │   Copilot SDK · Tools · Scheduler  │  │
 │  └──────────────┬─────────────────────┘  │
-│                 │                         │
+│                 │                        │
 │  ┌──────────────▼─────────────────────┐  │
 │  │   Local Storage (SQLite + Files)   │  │
 │  │   Sessions · Agents · Skills · Docs│  │
@@ -111,10 +104,8 @@ Cowork is an Electron 40 application that **automatically launches a Python Fast
 | **Local-first storage** | SQLite database + local filesystem — your data stays on your machine |
 | **Native file dialogs** | Open and save files using OS-native dialogs — drag-and-drop from Finder/Explorer |
 | **Azure CLI integration** | Verifies `az login` status on startup for optional cloud connectivity |
-| **OS theme detection** | Automatically matches your system dark/light mode preference |
-| **Custom titlebar** | Native macOS hidden inset titlebar with traffic light integration |
 | **Secure sandboxing** | Electron Fuses hardening — no Node.js in renderer, ASAR integrity, cookie encryption |
-| **Native packaging** | Real installers: `.app` (macOS), `.exe` (Windows/Squirrel), `.deb`/`.rpm` (Linux) |
+| **Native packaging** | Real installers: `.app` (macOS), `.exe` (Windows/Squirrel) |
 
 ### Cowork Pages & Capabilities
 
@@ -124,9 +115,10 @@ Cowork is an Electron 40 application that **automatically launches a Python Fast
 | **Chat** | Talk to the agent with real-time SSE streaming, pick models/agents/skills, approve destructive operations, view tool call details, resume prior sessions |
 | **Sessions** | Browse all past sessions, filter by status, search, bulk delete, view full conversation logs and metrics |
 | **Schedules** | Create cron/interval/event/webhook triggers, pause/resume, trigger manually, view run history |
-| **Metrics** | Multi-tab analytics — sessions (tokens, cost, duration), tool calls (usage, errors), schedules (reliability). Click any date for daily drill-down. |
 | **Agents** | Browse built-in and custom agents, create new ones with system prompts + tool subsets + skill bindings, clone and iterate |
 | **Skills** | Author SKILL.md domain expertise packages, upload ZIP bundles, validate, activate/disable |
+| **MCP Servers** | Add any MCP-compatible server (stdio or HTTP), manage configs, test connectivity, enable/disable |
+| **Metrics** | Multi-tab analytics — sessions (tokens, cost, duration), tool calls (usage, errors), schedules (reliability). Click any date for daily drill-down. |
 | **Settings** | System health, backend status, MCP server connectivity, environment info, desktop app version details |
 
 ---
@@ -200,13 +192,13 @@ Set up recurring jobs in the **Schedules** page:
 
 ## Prerequisites & Setup
 
-### Cowork Desktop App (Recommended for Individual Use)
+### Contelligence Cowork Desktop App (Recommended for Individual Use)
 
 #### Prerequisites
 
 | Requirement | Details |
 |-------------|---------|
-| **Operating System** | macOS 12+, Windows 10+, or Linux (Ubuntu 20.04+, Fedora 36+) |
+| **Operating System** | macOS 12+, Windows 10+ |
 | **GitHub account** | With an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise) |
 | **GitHub Copilot CLI** | Install via `npm install -g @githubnext/github-copilot-cli` — required for agent reasoning |
 | **Azure CLI** (optional) | Required only if connecting to Azure services (Blob, Cosmos, AI Search, etc.) |
@@ -219,7 +211,6 @@ Set up recurring jobs in the **Schedules** page:
    Download the installer for your platform:
    - macOS: `.zip` archive → extract and move to Applications
    - Windows: Squirrel installer (`.exe`) → auto-installs and creates shortcuts
-   - Linux: `.deb` or `.rpm` package → install via package manager
 
 2. **Install GitHub Copilot CLI**  
    Note: Node.js 22+ is required for installing the Copilot CLI.
@@ -228,16 +219,16 @@ Set up recurring jobs in the **Schedules** page:
    npm install -g @githubnext/github-copilot-cli
    ```
    
-   Make sure you're signed in to your GitHub account with an active Copilot subscription.
+   _Make sure you're signed in to your GitHub account with an active Copilot subscription._  
    Detailed instructions for Copilot CLI setup can be found in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started).
 
 3. **Launch the app**
 
-   Cowork automatically starts the backend, finds an available port, and opens the UI. The agent is ready when the dashboard loads.
+   Contelligence Cowork automatically starts the backend, finds an available port, and opens the UI. The agent is ready when the dashboard loads.
 
 4. **(Optional) Advanced configuration**
 
-   On first launch, Cowork creates a `.env` file at:
+   On first launch, Contelligence Cowork creates a `.env` file at:
    - `{HOME_DIR}/.contelligence/.env`
 
    Optional parameters include:
@@ -250,7 +241,7 @@ Set up recurring jobs in the **Schedules** page:
    ```bash
    az login
    ```
-   Cowork checks Azure CLI status on startup and shows a warning if not authenticated. You can use the app fully without Azure — local storage mode works out of the box.
+   Contelligence Cowork checks Azure CLI status on startup and shows a warning if not authenticated. You can use the app fully without Azure — local storage mode works out of the box.
 
 ### Development Setup (For Contributors)
 
@@ -282,72 +273,38 @@ npm start
 
 In dev mode, the Electron main process spawns `uvicorn main:app` from the sibling `contelligence-agent/` directory. You can also set `CONTELLIGENCE_API_URL=http://localhost:8081/api/v1` in a `.env.local` to point at an external backend.
 
-#### Running with Docker Compose (Full Azure Stack)
-
-Create `contelligence-agent/.env` with your Azure credentials:
-
-```env
-COPILOT_GITHUB_TOKEN=<your-github-pat-with-copilot-scope>
-COSMOS_ENDPOINT=https://<account>.documents.azure.com:443/
-COSMOS_DATABASE=contelligence
-AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT=gpt-4.1
-SEARCH_ENDPOINT=https://<service>.search.windows.net
-DOC_INTELLIGENCE_ENDPOINT=https://<resource>.cognitiveservices.azure.com/
-KEYVAULT_URL=https://<vault>.vault.azure.net/
-APPLICATIONINSIGHTS_CONNECTION_STRING=<connection-string>
-AUTH_ENABLED=false
-```
-
-Then start the stack:
-
-```bash
-docker compose -f docker-compose.agent.yml up --build
-```
-
-| Service | Port | Description |
-|---------|------|-------------|
-| `contelligence-agent` | 8000 | FastAPI backend |
-| `copilot-cli` | 4321 | GitHub Copilot CLI sidecar |
-| `azure-mcp` | 5008 | Azure MCP Server (HTTP transport) |
-
 ---
 
-## Azure Deployment — Web App for Teams
+## Azure Deployment — Web App
 
-While Cowork is designed for individual and small-team use on the desktop, the **Azure deployment** delivers a multi-user, enterprise-grade web application with full Azure service integration.
+While Contelligence Cowork is designed for individual and small-team use on the desktop, the **Azure deployment** delivers a multi-user, enterprise-grade web application with full Azure service integration.
 
 ### What the Azure Deployment Adds
 
-| Capability | Cowork (Desktop) | Azure Web App |
+| Capability | Contelligence Cowork (Desktop) | Azure Web App |
 |------------|-------------------|---------------|
 | **Storage** | SQLite + local filesystem | Cosmos DB (autoscale, global distribution) + Azure Blob Storage (lifecycle policies) |
 | **Authentication** | Single-user, no auth required | Entra ID / Azure AD with JWT validation |
 | **Authorization** | Full access | Three RBAC roles: `admin`, `operator`, `viewer` |
-| **Document OCR** | Disabled (or Azure CLI fallback) | Azure Document Intelligence (scanned documents, layout analysis) |
-| **Vector search** | Not available locally | Azure AI Search (full-text + vector + hybrid + semantic) |
-| **LLM** | GitHub Copilot SDK (via PAT) | Azure OpenAI (GPT-4.1 + embeddings) in your tenant |
 | **Observability** | Local logs | Application Insights (traces, metrics, alerts, KQL queries) |
 | **Secrets** | Local `.env` file | Azure Key Vault with automatic rotation |
 | **Scaling** | Single instance | Container Apps with 1–10 replicas, autoscale |
 | **Multi-user** | Single user | Team access with session isolation and RBAC |
-| **Data retention** | Manual | Automated lifecycle (Hot → Cool → Archive → Delete) |
-| **MCP servers** | Via Copilot SDK | Azure MCP Server sidecar (42+ Azure services) |
+| **MCP servers** | Via Copilot SDK | Via Copilot SDK |
 | **Network security** | Local only | VNet, Private Endpoints, NSGs, Azure Private Link |
-| **Audit** | Local session logs | Enterprise audit trail with user attribution (SOC 2 compatible) |
+| **Audit** | Local session logs | Enterprise audit trail with user attribution |
 
 ### When to Use Azure Deployment
 
 - **Team collaboration** — Multiple users need to share agents, skills, and sessions
 - **Enterprise compliance** — Entra ID authentication, RBAC, audit trail, data sovereignty requirements
-- **Production workloads** — Scheduled jobs across documents stored in Azure Blob, results indexed in AI Search
-- **Advanced document processing** — OCR for scanned documents via Azure Document Intelligence
-- **Semantic search** — Vector + hybrid search over extracted content using Azure AI Search
+- **Production workloads** — Scheduled jobs across documents stored in Azure Blob, results integrated with other Azure services, need for high availability and scaling
+- **Advanced document processing** — OCR for scanned documents via Azure Content Understanding/Document Intelligence
 - **Scale** — Auto-scaling backend for high-throughput document processing
 
 ### Azure Web App — Unique Capabilities
 
-The web app includes an **Outputs** page (not present in Cowork) for browsing session-grouped output artifacts with inline preview for text, JSON, and CSV files, plus direct download.
+The web app includes an **Outputs** page (not present in Contelligence Cowork) for browsing session-grouped output artifacts with inline preview for text, JSON, and CSV files, plus direct download.
 
 The web app also supports:
 - **Event Grid triggers** — Azure Event Grid subscriptions that fire agent jobs when content arrives in Blob Storage
@@ -363,8 +320,7 @@ Contelligence uses the **Azure Developer CLI (`azd`)** for one-command provision
 
 - [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) installed
 - Azure CLI (`az`) authenticated to your tenant
-- Docker running locally (for container builds)
-- Azure subscription with quota for Container Apps, Cosmos DB, AI Search, OpenAI, and Document Intelligence
+- Azure subscription with quota for Container Apps, Cosmos DB and Microsoft Foundry
 
 #### One-Command Deployment
 
@@ -379,7 +335,7 @@ azd up
 2. **Package** — builds Docker images for `agent` and `web` services, pushes to ACR
 3. **Deploy** — creates new Container App revisions from the pushed images
 
-You will be prompted for an **environment name** (e.g., `contelligence-dev`) and **Azure location** (e.g., `eastus2`).
+You will be prompted for an **environment name** (e.g., `contelligence-dev`) and **Azure location** (e.g., `westus`).
 
 #### What Gets Provisioned
 
@@ -391,9 +347,6 @@ You will be prompted for an **environment name** (e.g., `contelligence-dev`) and
 | **Web Container App** | 0.5 CPU / 1 GiB, 1–5 replicas, nginx reverse proxy |
 | **Cosmos DB** | NoSQL, autoscale 4,000 RU/s, 6 containers |
 | **Storage Account** | Standard_LRS with lifecycle policies |
-| **Azure OpenAI** | GPT-4.1 + text-embedding-3-large |
-| **Azure AI Search** | Basic SKU, 1 replica, 1 partition |
-| **Document Intelligence** | S0 SKU — OCR and layout analysis |
 | **Key Vault** | RBAC-enabled, soft-delete, purge protection |
 | **Log Analytics + App Insights** | 90-day retention, full observability |
 
@@ -422,20 +375,7 @@ API_URI=https://contelligence-agent.<region>.azurecontainerapps.io
 WEB_URI=https://contelligence-web.<region>.azurecontainerapps.io
 ```
 
-#### Other `azd` Commands
-
-```bash
-azd provision   # Provision infrastructure only
-azd deploy      # Build + deploy only (infra must exist)
-azd down        # Tear down all provisioned resources
-azd monitor     # Open Application Insights in browser
-```
-
 ---
-
-## Architecture
-
-![Architecture Diagram](assets/Contelligence-deployment-architecture.jpg)
 
 ## Solution Components
 ![Solution Components](assets/Contelligence-solution-components.jpeg)
@@ -459,6 +399,10 @@ Electron 40 app with React 18, TypeScript, Tailwind CSS, and 49 Shadcn/ui compon
 ### Web Frontend — `contelligence-web`
 
 React 18 SPA built with Vite, Tailwind CSS, and Shadcn/ui. Deployed as an nginx container on Azure Container Apps. Connects to the backend via reverse proxy.
+
+## Azure Deployment Architecture
+
+![Architecture Diagram](assets/Contelligence-deployment-architecture.jpg)
 
 ---
 
@@ -492,52 +436,67 @@ No code changes. No deployments. New domain expertise is live the moment you cli
 
 ### MCP Servers — Plug-In Any External Capability
 
-Contelligence uses the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) to connect your agent to external services and tools. Any MCP server you've already configured for GitHub Copilot is automatically available — no extra setup required.
+Contelligence uses the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) to connect your agent to external services and tools. Any [MCP-compatible server](https://modelcontextprotocol.io/docs/servers) works — community servers, vendor servers, or your own custom implementations.
 
-**Adding a new MCP server:**
+**Adding a new MCP server from the Cowork app:**
 
-MCP servers configured in GitHub Copilot CLI are discovered automatically at startup. To add a new one:
+1. **Open the MCP Servers page** — Click **MCP Servers** in the sidebar.
 
-1. **Configure in Copilot CLI** — Add the server to your Copilot CLI MCP configuration (typically in `~/.copilot/mcp-config.json` or your VS Code settings):
+2. **Click "Add Server"** — A dialog opens where you provide:
+   - **Name** — A unique identifier (e.g. `playwright`, `my-api`).
+   - **Config** — A JSON object describing the server. Two transport types are supported:
+
+   *Stdio server* (runs a local process):
    ```json
-    {
-    "mcpServers": {
-      "playwright": {
-        "type": "local",
-        "command": "npx",
-        "args": ["@playwright/mcp@latest"],
-        "env": {},
-        "tools": ["*"]
-      },
-      "microsoft-learn": {
-        "type": "http",
-        "url": "https://learn.microsoft.com/api/mcp"
-      },
-      "custom-server": {
-        "type": "http",
-        "url": "http://localhost:5008",
-        "headers": {},
-        "tools": ["*"]
-      }
-    }
+   {
+     "type": "stdio",
+     "command": "npx",
+     "args": ["@playwright/mcp@latest"],
+     "env": {},
+     "tools": ["*"]
    }
    ```
 
-2. **Restart Contelligence** — The agent discovers the new server and its tools become available immediately.
+   *HTTP server* (connects to a remote URL):
+   ```json
+   {
+     "type": "http",
+     "url": "https://learn.microsoft.com/api/mcp",
+     "tools": ["*"]
+   }
+   ```
 
-3. **Use it** — The agent automatically selects MCP tools when they're relevant to your instruction. No configuration in Contelligence itself.
+3. **Test connectivity** — Click the **Test** button on any server card to run a health probe and verify the server is reachable.
 
-You can also configure MCP servers via HTTP transport for remote or sidecar deployments by setting the server URL in environment variables (e.g., `AZURE_MCP_SERVER_URL=http://localhost:5008`).
+4. **Use it** — The agent automatically discovers new servers and selects MCP tools when they're relevant to your instruction. No restart required.
 
-Any [MCP-compatible server](https://modelcontextprotocol.io/docs/servers) works — community servers, vendor servers, or your own custom implementations.
+**Managing servers:**
 
-More details on adding MCP servers in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers).
+| Action | How |
+|--------|-----|
+| **Enable / Disable** | Toggle the switch on any server card — disabled servers are excluded without deleting the config |
+| **Edit** | Click **Edit** to update a server's config JSON |
+| **Remove** | Click the trash icon and confirm — the entry is deleted from your config file |
+| **Test** | Click **Test** to run a live health probe (shows OK, degraded, or unavailable) |
+
+**Config file layering:**
+
+Contelligence reads MCP server definitions from two files, merged at startup:
+
+| File | Purpose |
+|------|---------|
+| `~/.contelligence/mcp-config.json` | App-specific servers (highest priority) — managed by the UI |
+| `~/.copilot/mcp-config.json` | Shared ecosystem servers from GitHub Copilot CLI — imported automatically |
+
+Servers added through the Cowork UI are written to the app-specific config. Shared servers from `~/.copilot/mcp-config.json` are imported by default and can be disabled individually from the UI. To stop importing shared servers entirely, set `"importSharedConfig": false` in the app config.
+
+On first launch, Contelligence creates a default `~/.contelligence/mcp-config.json` with two starter servers: **Microsoft Learn** and **DeepWiki**.
 
 ---
 
 ## Security
 
-### Cowork Desktop Security
+### Contelligence Cowork Desktop Security
 
 - **Electron Fuses hardening** — `RunAsNode` disabled, ASAR integrity validation, cookie encryption, no Node CLI inspect
 - **Context isolation** — Renderer has no direct Node.js access; all system calls go through a typed IPC bridge
@@ -656,3 +615,11 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 - **Documentation**: Check the [docs](docs/README.md) directory for architecture decisions, specs, and operational guides
 
 ---
+
+
+## Status
+
+[![Status](https://badgen.net/badge/Status/alpha/purple)](#status)  
+
+Contelligence is currently in **alpha** — a proof-of-concept stage with core functionality implemented.  
+We are actively developing features, improving stability, and gathering feedback from early users.

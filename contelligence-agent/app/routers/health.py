@@ -48,6 +48,36 @@ async def health_check(request: Request):
     if token_manager is not None:
         response["token_health"] = token_manager.health_status()
 
+    # Copilot CLI client status
+    client_factory = getattr(request.app.state, "client_factory", None)
+    if client_factory is not None:
+        cli_status: dict = {"status": "unavailable"}
+        try:
+            client = client_factory.client  # raises RuntimeError if not started
+            auth = await client.get_auth_status()
+            cli_status["status"] = "available" if auth.isAuthenticated else "unauthenticated"
+            cli_status["auth_type"] = auth.authType
+            try:
+                status = await client.get_status()
+                cli_status["cli_version"] = status.version
+            except Exception:
+                pass
+        except RuntimeError:
+            cli_status["status"] = "not_started"
+            if overall == "healthy":
+                overall = "degraded"
+        except Exception:
+            cli_status["status"] = "unavailable"
+            if overall == "healthy":
+                overall = "degraded"
+
+        if cli_status["status"] not in ("available",):
+            if overall == "healthy":
+                overall = "degraded"
+
+        response["copilot_cli"] = cli_status
+        response["status"] = overall
+
     if mcp_status is not None:
         response["mcp_servers"] = mcp_status
 
