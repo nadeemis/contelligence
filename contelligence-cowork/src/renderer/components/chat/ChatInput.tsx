@@ -6,10 +6,22 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  externalValue?: string;
+  onExternalValueConsumed?: () => void;
 }
 
-export function ChatInput({ onSend, disabled = false, placeholder = "Type your instruction..." }: ChatInputProps) {
+export function ChatInput({ onSend, disabled = false, placeholder = "Type your instruction...", externalValue, onExternalValueConsumed }: ChatInputProps) {
   const [value, setValue] = useState("");
+
+  // Accept value pushed in from parent (e.g. sample prompt click)
+  useEffect(() => {
+    if (externalValue !== undefined && externalValue !== "") {
+      setValue(externalValue);
+      onExternalValueConsumed?.();
+      // Focus the textarea so user can edit / submit
+      textareaRef.current?.focus();
+    }
+  }, [externalValue, onExternalValueConsumed]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = useCallback(() => {

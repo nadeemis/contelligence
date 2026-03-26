@@ -11,6 +11,7 @@ import { createSplashWindow, splashProgress, splashLog, closeSplash } from './sp
 import { startBackend, waitForBackend, stopBackend, getBackendPort, getContelligenceHome, registerPowerMonitor, startHealthPoll } from './backend';
 import { checkCopilotCli, checkAzureLogin, AzureLoginResult } from './cli-detection';
 import { resolveShellPath, getResolvedPath } from './shell-env';
+import { defaultSamplePrompts } from './default-sample-prompts';
 
 // ─── User Identity ──────────────────────────────────────────────────────────
 
@@ -192,6 +193,32 @@ ipcMain.handle('get-azure-status', () => azureStatusCache);
 let userIdentityCache: UserIdentity = { machine: { username: '', fullName: '' } };
 ipcMain.handle('get-user-identity', () => userIdentityCache);
 
+// ─── Sample Prompts ─────────────────────────────────────────────────────────
+
+const samplePromptsPath = path.join(contelligenceHome, 'sample-prompts.json');
+
+function ensureSamplePromptsFile(): void {
+  if (fs.existsSync(samplePromptsPath)) return;
+  fs.writeFileSync(samplePromptsPath, JSON.stringify(defaultSamplePrompts, null, 2), 'utf-8');
+  fileLog('INFO', `Created default sample-prompts.json at ${samplePromptsPath}`);
+}
+
+ipcMain.handle('get-sample-prompts', () => {
+  try {
+    ensureSamplePromptsFile();
+    const raw = fs.readFileSync(samplePromptsPath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    fileLog('ERROR', `Failed to read sample-prompts.json: ${err}`);
+    return [];
+  }
+});
+
+ipcMain.handle('open-sample-prompts-editor', () => {
+  ensureSamplePromptsFile();
+  shell.openPath(samplePromptsPath);
+});
+
 // ─── Application Menu ───────────────────────────────────────────────────────
 
 const isMac = process.platform === 'darwin';
@@ -268,7 +295,10 @@ app.on('ready', async () => {
   // launched from Finder/Dock or from a terminal.
   resolveShellPath();
 
-  // ── Step 1: Copilot CLI check ──
+  // ── Step 1b: Ensure sample-prompts.json ──
+  ensureSamplePromptsFile();
+
+  // ── Step 2: Copilot CLI check ──
   splashProgress(10, 'Checking GitHub Copilot CLI\u2026');
   let copilotCliPath = '';
   const copilotStatus = checkCopilotCli();

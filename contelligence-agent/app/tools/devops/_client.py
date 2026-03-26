@@ -84,6 +84,24 @@ async def devops_request(
     query_params = params or {}
     query_params.setdefault("api-version", _API_VERSION)
 
+    return await _execute_request(
+        method, url, json_body=json_body, query_params=query_params, pat=pat,
+    )
+
+
+async def _execute_request(
+    method: str,
+    url: str,
+    *,
+    json_body: dict[str, Any] | None = None,
+    query_params: dict[str, Any] | None = None,
+    pat: str | None = None,
+) -> dict[str, Any]:
+    """Send an authenticated HTTP request to Azure DevOps.
+
+    If a PAT is provided but the request fails with 401 (expired / revoked),
+    automatically retries once using ``DefaultAzureCredential`` instead.
+    """
     headers = {
         "Authorization": await _get_auth_header(pat),
         "Accept": "application/json",
@@ -96,5 +114,13 @@ async def devops_request(
         resp = await client.request(
             method, url, json=json_body, params=query_params, headers=headers,
         )
+
+        if resp.status_code == 401 and pat:
+            logger.warning("PAT auth failed (401); retrying with DefaultAzureCredential")
+            headers["Authorization"] = await _get_auth_header()
+            resp = await client.request(
+                method, url, json=json_body, params=query_params, headers=headers,
+            )
+
         resp.raise_for_status()
         return resp.json()

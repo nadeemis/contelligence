@@ -106,5 +106,5 @@ async def get_project(
         }
 
     except Exception as exc:
-        logger.exception("devops_get_project failed")
+        logger.exception("devops_get_project failed", exc_info=exc)
         return {"error": str(exc)}
