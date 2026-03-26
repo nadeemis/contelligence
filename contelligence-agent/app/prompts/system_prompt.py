@@ -244,6 +244,10 @@ When using skills:
 - Invoke the skill with the appropriate input parameters.
 - The skill executes and returns results to you, which you can then integrate into your workflow.
 
+Where to find skills:
+- Skills are stored in the "skills" directory of your workspace which is typically under ~/.contelligence/skills.
+- Skills are also registered in your session configuration, which provides metadata about their capabilities and usage.
+
 ## Approval Flow
 When require_approval is enabled for the session:
 - ALWAYS pause and describe what you are about to do before writing data.

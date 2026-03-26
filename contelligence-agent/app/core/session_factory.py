@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from copilot import CopilotClient, Tool, ToolInvocation, ToolResult, PermissionHandler, CopilotSession as SDKSession
+from copilot import CopilotClient, SessionEvent, Tool, ToolInvocation, ToolResult, PermissionHandler, CopilotSession as SDKSession
 
 from app.core.client_factory import CopilotClientFactory
 from app.core.tool_registry import ToolDefinition, ToolRegistry
@@ -79,7 +79,7 @@ class CopilotSession:
             self._listener_registered = True
             
         try:
-            await self.sdk_session.send({"prompt": instruction})
+            await self.sdk_session.send(prompt=instruction)
             await done.wait()
             self.status = "completed"
         except Exception as exc:
@@ -100,7 +100,7 @@ class CopilotSession:
         references without adding duplicate listeners.
         """
 
-        def on_event(event: Any) -> None:
+        def on_event(event: SessionEvent) -> None:
             etype = event.type.value
             d = event.data
             eq = self._event_queue
@@ -553,15 +553,14 @@ class SessionFactory:
         """Last preflight check result, or ``None`` if :meth:`verify` was never called."""
         return self._health
 
-    async def create_session(
+    async def create_or_resume_session(
         self,
         session_id: str,
+        resume: bool = False,
         model: str | None = None,
         system_prompt: str = "",
         event_queue: asyncio.Queue[AgentEvent] | None = None,
         tools_override: list[ToolDefinition] | None = None,
-        mcp_override: dict[str, Any] | None = None,
-        messages: list[dict[str, Any]] | None = None,
         custom_agents: list[dict[str, Any]] | None = None,
         skill_directories: list[str] | None = None,
         disabled_skills: list[str] | None = None,
@@ -583,12 +582,6 @@ class SessionFactory:
         tools_override:
             If provided, use these tools instead of the full registry.
             Used by custom agents to restrict the tool set.
-        mcp_override:
-            If provided, use these MCP server configs instead of the
-            factory default.  Used by custom agents.
-        messages:
-            If provided, preload the session with this conversation history.
-            Used when resuming a previously persisted session.
         custom_agents:
             SDK ``CustomAgentConfig`` dicts to register as sub-agents.
             The SDK handles delegation natively when these are provided.
@@ -611,155 +604,68 @@ class SessionFactory:
         else:
             copilot_tools = self._make_copilot_tools()
 
-        config: dict[str, Any] = {
-            "model": model or self.default_model,
-            "tools": copilot_tools,
-            "streaming": True,
-            # "available_tools": [t.name for t in copilot_tools], # if this is set, the SDK only allows those tools to be used in this session, even if more are registered at the client level.  Useful for custom agents that want to restrict the toolset.
-        }
-
         # MCP servers — sub-sessions may restrict to a subset
         effective_mcp = self.mcp_servers if self.mcp_servers else None
+        effective_mcp_servers = None
         if effective_mcp:
-            config["mcp_servers"] = mcp_config_to_sdk_config(effective_mcp)
-
-        if sid:
-            config["session_id"] = sid
-
-        if system_prompt:
-            config["system_message"] = {"content": system_prompt}
-
-        if messages:
-            config["messages"] = messages
-
-        if self.provider_config:
-            config["provider"] = self.provider_config
-
-        # Custom agents — pass to SDK for native sub-agent delegation
-        if custom_agents:
-            config["custom_agents"] = custom_agents
-
-        # Skill directories
-        if skill_directories:
-            config["skill_directories"] = skill_directories
-
-        if disabled_skills:
-            config["disabled_skills"] = disabled_skills
+            effective_mcp_servers = mcp_config_to_sdk_config(effective_mcp)
 
         # Working directory — session override or factory default
         effective_wd = working_directory or self.working_directory
-        if effective_wd:
-            config["working_directory"] = effective_wd
+        # if effective_wd:
+        #     config["working_directory"] = effective_wd
 
         # Register hooks for tool-call observability if we have an event queue.
+        session_hooks = None
         if event_queue is not None:
-            config["hooks"] = self._make_hooks(event_queue, sid)
+            session_hooks = self._make_hooks(event_queue, sid)
 
-        config["on_permission_request"] = PermissionHandler.approve_all
-        sdk_session = await self.copilot_client.create_session(config)
-        return CopilotSession(sdk_session, sid)
-
-    async def resume_session(
-        self,
-        session_id: str,
-        model: str | None = None,
-        system_prompt: str = "",
-        event_queue: asyncio.Queue[AgentEvent] | None = None,
-        tools_override: list[ToolDefinition] | None = None,
-        mcp_override: dict[str, Any] | None = None,
-        custom_agents: list[dict[str, Any]] | None = None,
-        skill_directories: list[str] | None = None,
-        disabled_skills: list[str] | None = None,
-        working_directory: str | None = None,
-    ) -> CopilotSession:
-        """Resume an existing SDK session by its ID.
-
-        Uses the SDK's native ``CopilotClient.resume_session()`` which
-        preserves the full conversation history server-side, rather than
-        creating a brand-new session with messages replayed.
-
-        Parameters
-        ----------
-        session_id:
-            The ID of the session to resume (must have been previously
-            created via ``create_session``).
-        model:
-            The LLM model name.  Falls back to ``self.default_model``.
-        system_prompt:
-            An optional system message for the resumed session.
-        event_queue:
-            If provided, SDK hooks are registered to push ``tool_call_start``
-            and ``tool_call_complete`` events for real-time observability.
-        tools_override:
-            If provided, use these tools instead of the full registry.
-        mcp_override:
-            If provided, use these MCP server configs instead of the
-            factory default.
-        custom_agents:
-            SDK ``CustomAgentConfig`` dicts for the resumed session.
-        skill_directories:
-            Filesystem paths the SDK should load skills from.
-        disabled_skills:
-            Skill names to disable for this session.
-        working_directory:
-            Override the factory-level working directory.
-        """
-        # Fail fast if preflight check ran and failed
-        if self._health is not None and not self._health.healthy:
-            raise CopilotClientUnhealthyError(self._health)
-
-        if tools_override is not None:
-            copilot_tools = [self._wrap_tool(td) for td in tools_override]
+        if not resume:
+            sdk_session = await self.copilot_client.create_session(
+                                                                    on_permission_request=PermissionHandler.approve_all,
+                                                                    model=model or self.default_model,
+                                                                    session_id=sid,
+                                                                    tools=copilot_tools,
+                                                                    system_message={"content": system_prompt, "mode": "replace"} if system_prompt else None,
+                                                                    on_user_input_request=None,
+                                                                    hooks=session_hooks,
+                                                                    working_directory=effective_wd,
+                                                                    provider=self.provider_config,
+                                                                    streaming=True,
+                                                                    mcp_servers=effective_mcp_servers,
+                                                                    custom_agents=custom_agents,
+                                                                    agent=None, # TODO: support custom agents at the session level
+                                                                    config_dir=None, # TODO: support session-level config dir for custom agent configs and SDK plugins
+                                                                    skill_directories=skill_directories,
+                                                                    disabled_skills=disabled_skills,
+                                                                    infinite_sessions={"enabled": True}, # TODO: support infinite sessions for long-running agents that need to survive restarts
+                                                                )
         else:
-            copilot_tools = self._make_copilot_tools()
-
-        config: dict[str, Any] = {
-            "tools": copilot_tools,
-            "streaming": True,
-            "on_permission_request": PermissionHandler.approve_all,
-        }
-
-        if model or self.default_model:
-            config["model"] = model or self.default_model
-
-        # MCP servers — sub-sessions may restrict to a subset
-        effective_mcp = mcp_override if mcp_override is not None else self.mcp_servers
-        if effective_mcp:
-            config["mcp_servers"] = mcp_config_to_sdk_config(effective_mcp)
-
-        if system_prompt:
-            config["system_message"] = {"content": system_prompt}
-
-        if self.provider_config:
-            config["provider"] = self.provider_config
-
-        # Custom agents — pass to SDK for native sub-agent delegation
-        if custom_agents:
-            config["custom_agents"] = custom_agents
-
-        # Skill directories — merge factory defaults with session-specific
-        effective_skills = list(self.skill_directories)
-        if skill_directories:
-            for sd in skill_directories:
-                if sd not in effective_skills:
-                    effective_skills.append(sd)
-        if effective_skills:
-            config["skill_directories"] = effective_skills
-
-        if disabled_skills:
-            config["disabled_skills"] = disabled_skills
-
-        # Working directory — session override or factory default
-        effective_wd = working_directory or self.working_directory
-        if effective_wd:
-            config["working_directory"] = effective_wd
-
-        # Register hooks for tool-call observability if we have an event queue.
-        if event_queue is not None:
-            config["hooks"] = self._make_hooks(event_queue, session_id)
-
-        sdk_session = await self.copilot_client.resume_session(session_id, config)
-        return CopilotSession(sdk_session, session_id)
+            sdk_session = await self.copilot_client.resume_session(
+                                                                    session_id=session_id,
+                                                                    on_permission_request=PermissionHandler.approve_all,
+                                                                    model=model or self.default_model,
+                                                                    client_name=None, # TODO: support client_name for resumed sessions
+                                                                    reasoning_effort=None, # TODO: support reasoning_effort for resumed sessions
+                                                                    tools=copilot_tools,
+                                                                    system_message={"content": system_prompt, "mode": "replace"} if system_prompt else None,
+                                                                    available_tools=None, # TODO: support available/excluded tools for resumed sessions
+                                                                    excluded_tools=None,
+                                                                    on_user_input_request=None, # TODO: support user input requests for resumed sessions
+                                                                    hooks=session_hooks,
+                                                                    working_directory=effective_wd,
+                                                                    provider=self.provider_config,
+                                                                    streaming=True,
+                                                                    mcp_servers=effective_mcp_servers,
+                                                                    custom_agents=custom_agents,
+                                                                    agent=None, # TODO: support custom agents at the session level for resumed sessions
+                                                                    config_dir=None, # TODO: support session-level config dir for custom agent configs and SDK plugins for resumed sessions
+                                                                    skill_directories=skill_directories,
+                                                                    disabled_skills=disabled_skills,
+                                                                    infinite_sessions={"enabled": True}, # TODO: support infinite sessions for long-running agents that need to survive restarts for resumed sessions
+                                                                    disable_resume=False, # TODO: consider allowing resume to be disabled for sessions that should always start fresh, even if an old session with the same ID exists
+                                                                )
+        return CopilotSession(sdk_session, sid)
 
     # ------------------------------------------------------------------
     # Tool bridging

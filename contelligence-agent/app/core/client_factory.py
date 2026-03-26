@@ -14,7 +14,7 @@ import asyncio
 import logging
 from typing import Any
 
-from copilot import CopilotClient
+from copilot import CopilotClient, ExternalServerConfig, SubprocessConfig
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
@@ -40,7 +40,7 @@ class CopilotClientFactory:
         self._github_token: str | None = github_token
         self._client: CopilotClient | None = None
         self._lock = asyncio.Lock()
-
+        
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -66,13 +66,39 @@ class CopilotClientFactory:
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
 
-    def _build_options(self) -> dict[str, Any]:
-        """Merge base options with the current GitHub token."""
+    def _build_client(self) -> CopilotClient:
+        """
+            Create a new ``CopilotClient`` instance with the current options.
+            Note: The client is not started here; it is the caller's responsibility to call `start()` on the client after building it.
+        """
+        
         opts = {**self._base_options}
         if self._github_token:
             opts["github_token"] = self._github_token
-        return opts
+
+        if opts.get("cli_url") in [None, ""]:
+            client = CopilotClient(
+                config=SubprocessConfig(
+                    cli_path=opts.get("cli_path"),
+                    log_level=opts.get("log_level", "info"),
+                    cwd=opts.get("cli_cwd"),
+                    github_token=opts.get("github_token"),
+                    use_logged_in_user=opts.get("use_logged_in_user"),
+                ),
+                auto_start=opts.get("auto_start", True),
+            )
+        else:
+            client = CopilotClient(
+                config=ExternalServerConfig(
+                    url=opts["cli_url"]
+                ),
+                auto_start=opts.get("auto_start", True),
+            )
+        
+        return client
 
     async def start(self) -> CopilotClient:
         """Create and start a new ``CopilotClient``.
@@ -81,7 +107,7 @@ class CopilotClientFactory:
         """
         async with self._lock:
             await self._stop_current()
-            self._client = CopilotClient(self._build_options())
+            self._client = self._build_client()
             await self._client.start()
             logger.info("CopilotClient started via factory.")
             return self._client
@@ -118,7 +144,7 @@ class CopilotClientFactory:
                 self._github_token = github_token
                 logger.info("GitHub token updated on CopilotClientFactory.")
             await self._stop_current()
-            self._client = CopilotClient(self._build_options())
+            self._client = self._build_client()
             await self._client.start()
             logger.info("CopilotClient reset and restarted via factory.")
             return self._client

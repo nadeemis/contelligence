@@ -290,7 +290,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     base_options: dict = {
         "log_level": "info",
         "auto_start": True,
-        "auto_restart": True,
+        "cli_cwd": os.path.expanduser(settings.CLI_WORKING_DIRECTORY) if settings.CLI_WORKING_DIRECTORY else None,
     }
 
     cli_path = settings.COPILOT_CLI_PATH
@@ -410,12 +410,19 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
     # Preflight — fail fast if the SDK client can't complete a round-trip
     try:
-        await session_factory.verify(full_probe=True)
+        result = await session_factory.verify(full_probe=True)
+        if result.healthy:
+            logger.info("Copilot SDK preflight check passed — client is healthy and can create sessions.")
+        else:             
+            logger.warning(
+                f"Copilot SDK preflight check failed: {result.summary()} — "
+                "agent chat will be unavailable until a valid Copilot CLI and token are configured."
+            )
     except Exception as exc:
         logger.warning(
-            "Copilot SDK preflight check failed — agent chat will be "
-            "unavailable until a valid Copilot CLI and token are configured: %s",
-            exc,
+            f"Copilot SDK preflight check failed — agent chat will be "
+            f"unavailable until a valid Copilot CLI and token are configured: {exc}",
+            exc_info=exc,
         )
 
     app.state.session_factory = session_factory

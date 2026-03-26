@@ -131,16 +131,12 @@ async def verify_copilot_client(
     # ------------------------------------------------------------------
     session = None
     try:
-        config: dict[str, Any] = {
-            "streaming": True,
-            "on_permission_request": PermissionHandler.approve_all,
-        }
-        if model:
-            config["model"] = model
-        if provider_config:
-            config["provider"] = provider_config
-
-        session = await client.create_session(config)
+        session = await client.create_session(
+                                                on_permission_request=PermissionHandler.approve_all,
+                                                streaming=True,
+                                                model=model,
+                                                provider=provider_config,
+                                             )
 
         done = asyncio.Event()
         probe_error: str | None = None
@@ -161,7 +157,7 @@ async def verify_copilot_client(
                 done.set()
 
         session.on(_on_event)
-        await session.send({"prompt": _PROBE_PROMPT})
+        await session.send(prompt=_PROBE_PROMPT)
         await asyncio.wait_for(done.wait(), timeout=timeout)
 
         if probe_error:
