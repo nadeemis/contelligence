@@ -334,8 +334,9 @@ class PersistentAgentService:
         self._event_tees[session_id] = tee
 
         try:
-            sdk_session = await self.session_factory.create_session(
+            sdk_session = await self.session_factory.create_or_resume_session(
                 session_id=session_id,
+                resume=False,
                 model=options.model,
                 system_prompt=dynamic_prompt,
                 event_queue=tee,  # type: ignore[arg-type]  # duck-typed
@@ -382,6 +383,159 @@ class PersistentAgentService:
         )
 
         logger.info("Session %s created (model=%s)", session_id, options.model)
+        return session_id
+
+
+    # ------------------------------------------------------------------
+    # Public API — session resume
+    # ------------------------------------------------------------------
+    async def resume_session(
+        self,
+        session_id: str,
+        instruction: str,
+        options: InstructOptions,
+    ) -> str:
+        """Resume a previously completed/failed/paused session.
+
+        Loads conversation history from Cosmos, rebuilds the SDK message
+        list, and continues with the new instruction.
+
+        Returns the same *session_id*.
+        """
+        from fastapi import HTTPException
+
+        # 1. Validate resumability
+        record = await self.store.get_session(session_id)
+
+        if record.status == SessionStatus.ACTIVE:
+            if session_id in self.active_sessions:
+                logger.debug(f"Session {session_id} is already active in memory — treating resume as follow-up message.")
+                
+                # Session is genuinely running in memory — treat as a
+                # follow-up message rather than a full resume.
+                await self.send_reply(session_id, instruction)
+                return session_id
+            # else: stale ACTIVE status (e.g. after server restart) — safe
+            # to resume by rebuilding the SDK session from history.
+        elif record.status not in RESUMABLE_STATUSES:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Session cannot be resumed — status is '{record.status.value}'. "
+                    f"Only sessions with status "
+                    f"{[s.value for s in RESUMABLE_STATUSES]} can be resumed."
+                ),
+            )
+
+        # 2. Determine the next turn sequence from persisted history
+        turns = await self.store.get_turns(session_id)
+        logger.debug(
+            f"Loaded {len(turns)} conversation turns for session {session_id} resume."
+        )
+        next_sequence = len(turns)
+
+        # 3. Update session status to ACTIVE
+        record.status = SessionStatus.ACTIVE
+        record.updated_at = datetime.now(timezone.utc)
+        await self.store.save_session(record)
+
+        # 4. Save new user instruction as next turn
+        await self.store.save_turn(
+            ConversationTurn(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                sequence=next_sequence,
+                timestamp=datetime.now(timezone.utc),
+                role="user",
+                prompt=instruction,
+            )
+        )
+
+        # 5. Resolve agents and skills for the resumed session
+        #    (same logic as create_and_run but applied to resume)
+        selected_agents: dict = {}
+        if self.dynamic_registry is not None:
+            try:
+                agent_ids = record.options.get("agents", []) if record.options else []
+                selected_agents = await self.dynamic_registry.get_agents_for_session(
+                    agent_ids
+                )
+            except Exception:
+                logger.warning(
+                    "Session %s: failed to resolve agents for resume — continuing without",
+                    session_id, exc_info=True,
+                )
+
+        from app.agents.sdk_adapters import agents_to_sdk_configs
+
+        sdk_custom_agents: list[dict] = []
+        if selected_agents:
+            sdk_custom_agents = agents_to_sdk_configs(
+                selected_agents,
+                mcp_servers=self.session_factory.mcp_servers,
+            )
+
+        skill_directories: list[str] = []
+        if self.skills_manager is not None:
+            try:
+                skill_directories = self.skills_manager.get_skill_directories()
+            except Exception:
+                logger.warning(
+                    "Session %s: failed to resolve skill directories for resume",
+                    session_id, exc_info=True,
+                )
+
+        # 6. Resume SDK session — the SDK preserves conversation history
+        #    server-side, so we don't need to replay messages manually.
+        sse_queue: asyncio.Queue[AgentEvent] = asyncio.Queue()
+        persist_queue: asyncio.Queue[AgentEvent] = asyncio.Queue()
+        tee = _EventTee(sse_queue, persist_queue)
+        self.event_queues[session_id] = sse_queue
+        self._event_tees[session_id] = tee
+
+        try:
+            sdk_session = await self.session_factory.create_or_resume_session(
+                session_id=session_id,
+                resume=True,
+                model=options.model or record.model,
+                system_prompt=self.system_prompt,
+                event_queue=tee,  # type: ignore[arg-type]
+                custom_agents=sdk_custom_agents or None,
+                skill_directories=skill_directories or None,
+            )
+        except Exception as exc:
+            logger.exception(
+                f"Session {session_id} failed to resume SDK session: {exc}"
+            )
+            await self.store.update_session_status(
+                session_id, SessionStatus.FAILED,
+            )
+            # Notify any SSE listeners of the failure
+            await sse_queue.put(
+                AgentEvent(
+                    type="session_error",
+                    data={"error": f"Failed to resume SDK session: {exc}"},
+                    session_id=session_id,
+                )
+            )
+            # Clean up event queues
+            self.event_queues.pop(session_id, None)
+            self._event_tees.pop(session_id, None)
+            raise
+
+        self.active_sessions[session_id] = sdk_session
+
+        # 6. Start persistent loop
+        turn_seq = [next_sequence + 1]
+        task = asyncio.create_task(
+            self._run_persistent_loop(
+                sdk_session, session_id, instruction, tee,
+                persist_queue, turn_seq,
+            )
+        )
+        self._session_tasks[session_id] = task
+
+        logger.info(f"Session {session_id} resumed")
         return session_id
 
     # ------------------------------------------------------------------
@@ -555,156 +709,7 @@ class PersistentAgentService:
         except SessionNotFoundError:
             return {"session_id": session_id, "status": "not_found"}
 
-    # ------------------------------------------------------------------
-    # Public API — session resume
-    # ------------------------------------------------------------------
-    async def resume_session(
-        self,
-        session_id: str,
-        instruction: str,
-        options: InstructOptions,
-    ) -> str:
-        """Resume a previously completed/failed/paused session.
-
-        Loads conversation history from Cosmos, rebuilds the SDK message
-        list, and continues with the new instruction.
-
-        Returns the same *session_id*.
-        """
-        from fastapi import HTTPException
-
-        # 1. Validate resumability
-        record = await self.store.get_session(session_id)
-
-        if record.status == SessionStatus.ACTIVE:
-            if session_id in self.active_sessions:
-                logger.debug(f"Session {session_id} is already active in memory — treating resume as follow-up message.")
-                
-                # Session is genuinely running in memory — treat as a
-                # follow-up message rather than a full resume.
-                await self.send_reply(session_id, instruction)
-                return session_id
-            # else: stale ACTIVE status (e.g. after server restart) — safe
-            # to resume by rebuilding the SDK session from history.
-        elif record.status not in RESUMABLE_STATUSES:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Session cannot be resumed — status is '{record.status.value}'. "
-                    f"Only sessions with status "
-                    f"{[s.value for s in RESUMABLE_STATUSES]} can be resumed."
-                ),
-            )
-
-        # 2. Determine the next turn sequence from persisted history
-        turns = await self.store.get_turns(session_id)
-        logger.debug(
-            f"Loaded {len(turns)} conversation turns for session {session_id} resume."
-        )
-        next_sequence = len(turns)
-
-        # 3. Update session status to ACTIVE
-        record.status = SessionStatus.ACTIVE
-        record.updated_at = datetime.now(timezone.utc)
-        await self.store.save_session(record)
-
-        # 4. Save new user instruction as next turn
-        await self.store.save_turn(
-            ConversationTurn(
-                id=str(uuid.uuid4()),
-                session_id=session_id,
-                sequence=next_sequence,
-                timestamp=datetime.now(timezone.utc),
-                role="user",
-                prompt=instruction,
-            )
-        )
-
-        # 5. Resolve agents and skills for the resumed session
-        #    (same logic as create_and_run but applied to resume)
-        selected_agents: dict = {}
-        if self.dynamic_registry is not None:
-            try:
-                agent_ids = record.options.get("agents", []) if record.options else []
-                selected_agents = await self.dynamic_registry.get_agents_for_session(
-                    agent_ids
-                )
-            except Exception:
-                logger.warning(
-                    "Session %s: failed to resolve agents for resume — continuing without",
-                    session_id, exc_info=True,
-                )
-
-        from app.agents.sdk_adapters import agents_to_sdk_configs
-
-        sdk_custom_agents: list[dict] = []
-        if selected_agents:
-            sdk_custom_agents = agents_to_sdk_configs(
-                selected_agents,
-                mcp_servers=self.session_factory.mcp_servers,
-            )
-
-        skill_directories: list[str] = []
-        if self.skills_manager is not None:
-            try:
-                skill_directories = self.skills_manager.get_skill_directories()
-            except Exception:
-                logger.warning(
-                    "Session %s: failed to resolve skill directories for resume",
-                    session_id, exc_info=True,
-                )
-
-        # 6. Resume SDK session — the SDK preserves conversation history
-        #    server-side, so we don't need to replay messages manually.
-        sse_queue: asyncio.Queue[AgentEvent] = asyncio.Queue()
-        persist_queue: asyncio.Queue[AgentEvent] = asyncio.Queue()
-        tee = _EventTee(sse_queue, persist_queue)
-        self.event_queues[session_id] = sse_queue
-        self._event_tees[session_id] = tee
-
-        try:
-            sdk_session = await self.session_factory.resume_session(
-                session_id=session_id,
-                model=options.model or record.model,
-                system_prompt=self.system_prompt,
-                event_queue=tee,  # type: ignore[arg-type]
-                custom_agents=sdk_custom_agents or None,
-                skill_directories=skill_directories or None,
-            )
-        except Exception as exc:
-            logger.exception(
-                f"Session {session_id} failed to resume SDK session: {exc}"
-            )
-            await self.store.update_session_status(
-                session_id, SessionStatus.FAILED,
-            )
-            # Notify any SSE listeners of the failure
-            await sse_queue.put(
-                AgentEvent(
-                    type="session_error",
-                    data={"error": f"Failed to resume SDK session: {exc}"},
-                    session_id=session_id,
-                )
-            )
-            # Clean up event queues
-            self.event_queues.pop(session_id, None)
-            self._event_tees.pop(session_id, None)
-            raise
-
-        self.active_sessions[session_id] = sdk_session
-
-        # 6. Start persistent loop
-        turn_seq = [next_sequence + 1]
-        task = asyncio.create_task(
-            self._run_persistent_loop(
-                sdk_session, session_id, instruction, tee,
-                persist_queue, turn_seq,
-            )
-        )
-        self._session_tasks[session_id] = task
-
-        logger.info(f"Session {session_id} resumed")
-        return session_id
+    
 
     # # ------------------------------------------------------------------
     # # Large result offloading (WS-4)

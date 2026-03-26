@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import platform
 import sys
+from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import APIRouter, Depends, Request
 
 from app.dependencies import get_settings
 from app.settings import AppSettings
 from app.utils.instance import get_instance_id
+
+try:
+    __version__ = version("contelligence-agent")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"
 
 router = APIRouter(prefix="/health", tags=["Health"])
 
@@ -34,7 +40,7 @@ async def health_check(request: Request):
     response: dict = {
         "status": overall,
         "service": "contelligence-agent",
-        "version": "1.0.0",
+        "version": __version__,
         "instance_id": get_instance_id(),
     }
 
