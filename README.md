@@ -1,9 +1,8 @@
 <h1><img src="./assets/Contelligence-logo.png" alt="" width="120" valign="middle" />&nbsp;&nbsp;Contelligence</h1>
 
 
-
 **GitHub Copilot changed how developers work. Contelligence brings that same power to everyone else.**
-
+> Tell it what you need. In plain English. It does the rest.
 
 [![Status](https://badgen.net/badge/Status/alpha/purple)](#status)
 [![Platform](https://img.shields.io/badge/Platform-GitHub%20Copilot-blue)](#what-is-contelligence)
@@ -36,15 +35,7 @@ Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app t
 
 **No pipelines. No code.**
 
-| Aspect | Before | With Contelligence |
-|--------|--------|--------------------|
-| New task | Engineering work (days–weeks) | Natural language instruction (seconds) |
-| New format | Custom parser required | Agent handles it immediately |
-| Cross-document analysis | Manual or not done | Agent reasons across all content |
-| Error handling | Retry policies, fail flags | Agent observes, reasons, adapts |
-| Audit trail | Limited | Every decision, tool call, and reasoning step logged |
 
----
 
 ## Contelligence Cowork — Desktop App
 
@@ -55,17 +46,158 @@ Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app t
 
 ![Contelligence Cowork UI](assets/contelligence-cowork-ui.gif)
 
-### What Cowork Does
+### What Contelligence Cowork Does
 
-Cowork puts the full power of the Contelligence agent on your desktop:
+Contelligence Cowork puts the full power of the Contelligence agent on your desktop:
 
 - **Chat with an AI agent** that understands documents, spreadsheets, presentations, images, audio, and web content
-- **Extract and transform data** from any file format using natural language instructions
 - **Analyze content across multiple documents** — the agent reasons over your entire corpus, not just individual files
+- **Automate repetitive tasks** — set up scheduled jobs for day-to-day workflows like monitor channels, pull reports, and more
 - **Create custom agents** with specialized personas, restricted tool sets, and domain expertise
 - **Build and manage skills** — reusable knowledge packages that teach the agent domain-specific workflows
-- **Schedule automated jobs** — cron, interval, and webhook-triggered tasks that run without supervision
 - **Track everything** — full session history, tool call logs, metrics, and audit trail
+
+### Prerequisites & Installation
+
+| Requirement | Details |
+|-------------|---------|
+| **Operating System** | macOS 12+, Windows 10+ |
+| **GitHub account** | With an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise) |
+| **GitHub Copilot CLI** | Required for agent reasoning |
+| **Azure CLI** (optional) | Required only if connecting to Azure services (Blob, Cosmos, AI Search, etc.) |
+| **Disk space** | ~200 MB for the application + space for your documents and local database |
+
+#### 🔌 Setup Steps
+
+1. **Download and install Contelligence Cowork**
+
+   Download the installer for your platform:
+   - macOS: `.zip` archive → extract and move to Applications
+   - Windows: Squirrel installer (`.exe`) → auto-installs and creates shortcuts
+
+2. **Install GitHub Copilot CLI**  
+   Detailed instructions for Copilot CLI setup can be found in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started).
+
+   ```bash
+   # Cross platform installation of GitHub Copilot CLI, requires Node.js 22+.
+   npm install -g @github/copilot
+
+   # Windows - in a PowerShell terminal run:
+   winget install GitHub.Copilot
+
+   # macOS - using Homebrew, run:
+   brew install copilot-cli
+   ```
+   
+   _Make sure you're signed in to your GitHub account with an active Copilot subscription._
+   ```bash
+   
+   # run copilot
+   copilot
+
+   # Authenticate - run in the Copilot CLI terminal:
+   /login
+   ```
+
+3. **Launch the app**
+
+   Contelligence Cowork automatically starts the backend, finds an available port, and opens the UI. The agent is ready when the dashboard loads.
+
+4. **(Optional) Advanced configuration**
+
+   On first launch, Contelligence Cowork creates a `.env` file at:
+   - `{HOME_DIR}/.contelligence/.env`
+
+   Optional parameters include:
+   - `COPILOT_GITHUB_TOKEN` — A GitHub PAT with `copilot` scope (alternative to CLI-based auth)
+   - `AZURE_*` — Azure service endpoints for cloud features
+
+5. **(Optional) Connect to Azure**
+
+   If you have Azure resources and want advanced features (OCR via Document Intelligence, vector search via AI Search, cloud storage):
+   ```bash
+   az login
+   ```
+   Contelligence Cowork checks Azure CLI status on startup and shows a warning if not authenticated. You can use the app fully without Azure — local storage mode works out of the box.
+
+
+### Getting Started — Your First Conversation
+
+Open Cowork, click **Chat**, and type a natural language instruction. The agent figures out the rest.
+
+| Category | Sample Prompt |
+|----------|--------------|
+| **Teams & Communication** | *"Pull the last 50 messages from the product-launches channel in Teams, summarize the key decisions, and list all action items with owners. Write the output at \<file_path\>"* |
+| | *"Check my Teams chats from the past week — find any messages where I was @mentioned and create a prioritized to-do list. Send the message to myself on Teams."* |
+| | *"Read the Engineering team's General channel in Teams, identify all open questions that haven't been answered, and draft suggested responses. Write the output at \<file_path\>"* |
+| | *"Get my calendar events for this week and cross-reference with the project-updates channel — flag any meetings where pre-read documents were shared but I haven't reviewed them."* |
+| **Browser & Web Research** | *"Navigate to our company's public status page, extract the current uptime percentages for each service, and produce a summary table. Write the output at \<file_path\>"* |
+| | *"Go to the SEC EDGAR page for \<company\>, download the latest 10-K filing, and extract the risk factors section. Write the output at \<file_path\>"* |
+| | *"Open our internal wiki at \<url\>, navigate to the onboarding checklist page, and extract every task into a structured JSON list."* |
+| **DevOps & Bug Triage** | *"Query all active bugs in the \<org\>/\<project\> Azure DevOps project, search the web for known fixes or workarounds for each one, and produce a triage report with suggested resolutions and links to relevant Stack Overflow or GitHub issues."* |
+| | *"Fetch the top 10 highest-priority work items from \<org\>/\<project\> in Azure DevOps, browse the error messages on the web to find root-cause analysis patterns, and generate a recommended fix plan with references for each item."* |
+| **Multi-Source Intelligence** | *"Pull last week's messages from the #sales-deals channel in Teams, combine with the pipeline spreadsheet at \<file_path\>, and produce a deals-at-risk report with context from both sources."* |
+| | *"Scrape the competitor's pricing page at \<url\>, compare against our pricing sheet at \<file_path\>, and generate a competitive pricing analysis with recommendations."* |
+| | *"Read the RFP document at \<file_path\>, browse the client's website at \<url\> for background, then pull our past proposals from Teams — draft a tailored response outline."* |
+| | *"Gather the meeting notes from Teams (last 2 weeks of the #engineering channel), combine with the project plan at \<file_path\> and the Jira board at \<url\> — produce a status report highlighting blockers and timeline risks."* |
+| | *"Extract data from the invoice PDF at \<file_path\>, look up the vendor's current details on their website at \<url\>, cross-check against the approved vendor list spreadsheet at \<file_path\> — flag any mismatches."* |
+| **Document Extraction** | *"Extract all the data from the invoice PDF at \<file_path\> — vendor name, invoice number, line items, tax, total — and output it as structured JSON."* |
+| | *"Read this Word document at \<file_path\> and summarize the key findings in 5 bullet points."* |
+| | *"Extract the financial data from this Excel spreadsheet at \<file_path\>, calculate year-over-year growth for each category, and produce a summary table."* |
+| **Multi-Format Ingestion** | *"Ingest the Q3 board pack at \<file_path\> — pull data from the PDF narrative, the Excel financials, and the PowerPoint strategy deck — produce a unified executive summary."* |
+| | *"I have 50 scanned invoices as images at \<file_path\>. OCR each one, extract vendor and amount, and output a CSV with all results."* |
+| **Cross-Document Intelligence** | *"Analyze all vendor contracts at \<file_path\> from the past 3 years — identify pricing trends, flag terms that have become more aggressive, and surface vendors whose SLAs have degraded over time."* |
+| | *"Compare the new draft regulation against our current policy library at \<file_path\> — identify every clause that creates a compliance gap, rank by risk severity, and generate remediation action items."* |
+| | *"Gather findings from these 30 research papers and 12 internal experiment reports at \<file_path\> — identify consensus conclusions, conflicting results, and knowledge gaps."* |
+| **Content Transformation** | *"Take this customer feedback spreadsheet at \<file_path\> and categorize each entry by sentiment (positive/negative/neutral), topic, and urgency. Output a structured report with statistics."* |
+| | *"Convert this technical specification document at \<file_path\> into a non-technical executive briefing — keep the key decisions and risks, remove the implementation details."* |
+| **Competitive & Market Analysis** | *"Ingest the last 8 quarterly earnings transcripts from our top 5 competitors at \<file_path\>, extract strategic themes, compare R&D investment signals, and produce a competitive landscape report."* |
+| | *"Analyze these 20 product reviews and 15 support tickets at \<file_path\> — what are the top 3 issues customers are reporting? Are there any patterns the product team should act on?"* |
+
+
+### Using Custom Agents
+
+Create a specialized agent in the **Agents** page, then select it in chat:
+
+> *Agent: "legal-contract-reviewer"*
+> *Prompt: "Review this vendor agreement at <file_path>. Flag any non-standard indemnification clauses, unfavorable liability caps, and auto-renewal terms. Compare against our standard template."*
+
+> *Agent: "medical-records-analyst"*
+> *Prompt: "Extract patient demographics from these intake forms at <file_path>. Apply PHI redaction rules. Validate all ICD-10 codes."*
+
+### Using Skills
+
+Activate a skill in the chat to give the agent domain expertise:
+
+> *Prompt: "Using the skill invoice-processing, process all invoices in this folder at <file_path>. The skill knows our field mappings — vendor name, PO number, line items, tax, total. Validate amounts and flag any credit notes."*
+
+### Scheduling Automated Workflows
+
+Set up recurring jobs in the **Schedules** page:
+
+- **Nightly financial close**: Cron `0 2 * * *` — *"Collect all transactions from today, reconcile against source documents, flag discrepancies, generate GL entries."*
+- **Weekly contract monitoring**: Every Monday at 9 AM — *"Scan all active contracts for upcoming deadlines, expiring terms, and unmet obligations. Generate an action-item report."*
+- **On-demand QA**: Webhook trigger — *"Sample 10% of this week's processed content, validate extraction accuracy, generate a quality report with confidence scores."*
+- **Ad-hoc research**: Interval trigger every 4 hours — *"Monitor the #industry-news channel in Teams, extract any new articles or reports shared, summarize key insights, and compile into a daily digest."*
+
+### Contelligence Tools
+Contelligence Cowork includes many built-in tools for content ingestion, transformation, analysis, and automation. The agent selects the right tools based on your instruction, but you can also specify tool usage in your prompt.
+
+List of tools currently available:
+| Tool Group | Description |
+|-----------|-------------|
+| Desktop | Read, list, or write files on the local desktop filesystem.|
+| Extraction | Extract structured data from documents (PDF, Word, Excel, PowerPoint) and images |
+| Browser Automation | Navigate web pages, scrape content, interact with forms, and automate web tasks |
+| Microsoft Teams | Pull messages, post updates, manage channels, and integrate with Teams content |
+| Azure DevOps | Query work items, pull reports, and integrate with Azure DevOps projects |
+| SharePoint | Access files and data stored in SharePoint sites |
+| Power BI | Query datasets, pull reports, and integrate with Power BI workspaces |
+| Azure Storage | Store and retrieve files from Azure Blob Storage |
+
+Detailed documentation for each tool, including usage examples and best practices, can be found in the [Tool Reference](docs/TOOLS.md).
+
+---
 
 ### How It Works
 
@@ -96,152 +228,7 @@ Cowork is an [Electron](https://www.electronjs.org/) application that **automati
 └──────────────────────────────────────────┘
 ```
 
-### Desktop-Specific Features
-
-| Feature | Description |
-|---------|-------------|
-| **Embedded backend** | Python backend auto-starts/stops with the app — no manual server management |
-| **Local-first storage** | SQLite database + local filesystem — your data stays on your machine |
-| **Native file dialogs** | Open and save files using OS-native dialogs — drag-and-drop from Finder/Explorer |
-| **Azure CLI integration** | Verifies `az login` status on startup for optional cloud connectivity |
-| **Secure sandboxing** | Electron Fuses hardening — no Node.js in renderer, ASAR integrity, cookie encryption |
-| **Native packaging** | Real installers: `.app` (macOS), `.exe` (Windows/Squirrel) |
-
-### Cowork Pages & Capabilities
-
-| Page | What You Can Do |
-|------|----------------|
-| **Dashboard** | See KPI cards (sessions today, active now, tool calls, error rate), sessions-over-time charts, activity feed, and active schedules |
-| **Chat** | Talk to the agent with real-time SSE streaming, pick models/agents/skills, approve destructive operations, view tool call details, resume prior sessions |
-| **Sessions** | Browse all past sessions, filter by status, search, bulk delete, view full conversation logs and metrics |
-| **Schedules** | Create cron/interval/event/webhook triggers, pause/resume, trigger manually, view run history |
-| **Agents** | Browse built-in and custom agents, create new ones with system prompts + tool subsets + skill bindings, clone and iterate |
-| **Skills** | Author SKILL.md domain expertise packages, upload ZIP bundles, validate, activate/disable |
-| **MCP Servers** | Add any MCP-compatible server (stdio or HTTP), manage configs, test connectivity, enable/disable |
-| **Metrics** | Multi-tab analytics — sessions (tokens, cost, duration), tool calls (usage, errors), schedules (reliability). Click any date for daily drill-down. |
-| **Settings** | System health, backend status, MCP server connectivity, environment info, desktop app version details |
-
 ---
-
-## Sample Use Cases & Prompts
-
-### Getting Started — Your First Conversation
-
-Open Cowork, click **Chat**, and type a natural language instruction. The agent figures out the rest.
-
-#### Document Extraction
-
-> *"Extract all the data from this invoice PDF — vendor name, invoice number, line items, tax, total — and output it as structured JSON."*
-
-> *"Read this Word document and summarize the key findings in 5 bullet points."*
-
-> *"Extract the financial data from this Excel spreadsheet, calculate year-over-year growth for each category, and produce a summary table."*
-
-#### Multi-Format Ingestion
-
-> *"Ingest the Q3 board pack — pull data from the PDF narrative, the Excel financials, and the PowerPoint strategy deck — produce a unified executive summary."*
-
-> *"I have 50 scanned invoices as images. OCR each one, extract vendor and amount, and output a CSV with all results."*
-
-#### Cross-Document Intelligence
-
-> *"Analyze all vendor contracts from the past 3 years — identify pricing trends, flag terms that have become more aggressive, and surface vendors whose SLAs have degraded over time."*
-
-> *"Compare the new draft regulation against our current policy library — identify every clause that creates a compliance gap, rank by risk severity, and generate remediation action items."*
-
-> *"Gather findings from these 30 research papers and 12 internal experiment reports — identify consensus conclusions, conflicting results, and knowledge gaps."*
-
-#### Content Transformation
-
-> *"Take this customer feedback spreadsheet and categorize each entry by sentiment (positive/negative/neutral), topic, and urgency. Output a structured report with statistics."*
-
-> *"Convert this technical specification document into a non-technical executive briefing — keep the key decisions and risks, remove the implementation details."*
-
-#### Competitive & Market Analysis
-
-> *"Ingest the last 8 quarterly earnings transcripts from our top 5 competitors, extract strategic themes, compare R&D investment signals, and produce a competitive landscape report."*
-
-> *"Analyze these 20 product reviews and 15 support tickets — what are the top 3 issues customers are reporting? Are there any patterns the product team should act on?"*
-
-### Using Custom Agents
-
-Create a specialized agent in the **Agents** page, then select it in chat:
-
-> *Agent: "legal-contract-reviewer"*
-> *Prompt: "Review this vendor agreement. Flag any non-standard indemnification clauses, unfavorable liability caps, and auto-renewal terms. Compare against our standard template."*
-
-> *Agent: "medical-records-analyst"*
-> *Prompt: "Extract patient demographics from these intake forms. Apply PHI redaction rules. Validate all ICD-10 codes."*
-
-### Using Skills
-
-Activate a skill in the chat to give the agent domain expertise:
-
-> *Skill: "invoice-processing"*
-> *Prompt: "Process all invoices in this folder. The skill knows our field mappings — vendor name, PO number, line items, tax, total. Validate amounts and flag any credit notes."*
-
-### Scheduling Automated Workflows
-
-Set up recurring jobs in the **Schedules** page:
-
-- **Nightly financial close**: Cron `0 2 * * *` — *"Collect all transactions from today, reconcile against source documents, flag discrepancies, generate GL entries."*
-- **Weekly contract monitoring**: Every Monday at 9 AM — *"Scan all active contracts for upcoming deadlines, expiring terms, and unmet obligations. Generate an action-item report."*
-- **On-demand QA**: Webhook trigger — *"Sample 10% of this week's processed content, validate extraction accuracy, generate a quality report with confidence scores."*
-
----
-
-## Prerequisites & Setup
-
-### Contelligence Cowork Desktop App (Recommended for Individual Use)
-
-#### Prerequisites
-
-| Requirement | Details |
-|-------------|---------|
-| **Operating System** | macOS 12+, Windows 10+ |
-| **GitHub account** | With an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise) |
-| **GitHub Copilot CLI** | Install via `npm install -g @githubnext/github-copilot-cli` — required for agent reasoning |
-| **Azure CLI** (optional) | Required only if connecting to Azure services (Blob, Cosmos, AI Search, etc.) |
-| **Disk space** | ~200 MB for the application + space for your documents and local database |
-
-#### Setup Steps
-
-1. **Download and install Contelligence Cowork**
-
-   Download the installer for your platform:
-   - macOS: `.zip` archive → extract and move to Applications
-   - Windows: Squirrel installer (`.exe`) → auto-installs and creates shortcuts
-
-2. **Install GitHub Copilot CLI**  
-   Note: Node.js 22+ is required for installing the Copilot CLI.
-
-   ```bash
-   npm install -g @githubnext/github-copilot-cli
-   ```
-   
-   _Make sure you're signed in to your GitHub account with an active Copilot subscription._  
-   Detailed instructions for Copilot CLI setup can be found in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started).
-
-3. **Launch the app**
-
-   Contelligence Cowork automatically starts the backend, finds an available port, and opens the UI. The agent is ready when the dashboard loads.
-
-4. **(Optional) Advanced configuration**
-
-   On first launch, Contelligence Cowork creates a `.env` file at:
-   - `{HOME_DIR}/.contelligence/.env`
-
-   Optional parameters include:
-   - `COPILOT_GITHUB_TOKEN` — A GitHub PAT with `copilot` scope (alternative to CLI-based auth)
-   - `AZURE_*` — Azure service endpoints for cloud features
-
-5. **(Optional) Connect to Azure**
-
-   If you have Azure resources and want advanced features (OCR via Document Intelligence, vector search via AI Search, cloud storage):
-   ```bash
-   az login
-   ```
-   Contelligence Cowork checks Azure CLI status on startup and shows a warning if not authenticated. You can use the app fully without Azure — local storage mode works out of the box.
 
 ### Development Setup (For Contributors)
 
@@ -250,10 +237,10 @@ Set up recurring jobs in the **Schedules** page:
 | Requirement | Details |
 |-------------|---------|
 | **Python 3.12+** | Backend runtime |
-| **Node.js 20+** | Frontend and Electron build |
+| **Node.js 22+** | Frontend and Electron build |
 | **Docker** + Docker Compose | For full-stack local development with Azure services |
 | **Azure CLI** | For provisioning and deployment |
-| **GitHub Copilot CLI** | `npm install -g @githubnext/github-copilot-cli` — requires a GitHub account with Copilot subscription |
+| **GitHub Copilot CLI** | Requires a GitHub account with Copilot subscription |
 
 #### Running Cowork in Development Mode
 
@@ -261,6 +248,9 @@ Set up recurring jobs in the **Schedules** page:
 # Install backend dependencies
 cd contelligence-agent
 pip install -r requirements.txt
+
+# Start the backend server (runs on http://localhost:8080 by default)
+uvicorn main:app --reload
 
 # Install Cowork frontend dependencies
 cd ../contelligence-cowork
@@ -276,6 +266,11 @@ In dev mode, the Electron main process spawns `uvicorn main:app` from the siblin
 ---
 
 ## Azure Deployment — Web App
+
+> ⚠️ **Azure deployment model of Contelligence is in active development and improvements are ongoing.**
+> 
+> The current web app version delivers core agent capabilities with Azure service integration, but some features from the desktop app (e.g., Outputs page, certain tools) are still being implemented. The desktop app remains the most feature-complete experience while the web app is being built out.
+
 
 While Contelligence Cowork is designed for individual and small-team use on the desktop, the **Azure deployment** delivers a multi-user, enterprise-grade web application with full Azure service integration.
 
@@ -384,7 +379,7 @@ WEB_URI=https://contelligence-web.<region>.azurecontainerapps.io
 
 FastAPI application with the GitHub Copilot SDK as the orchestration runtime. Key layers:
 
-- **20 atomic tools** — document extraction (PDF, DOCX, XLSX, PPTX, scanned images via OCR, web scraping, audio transcription), storage and querying (Blob, Cosmos DB, AI Search), AI operations (embeddings, OpenAI calls), and agent delegation.
+- **38 atomic tools** — document extraction (PDF, DOCX, XLSX, PPTX, scanned images via OCR), browser automation, Microsoft Teams & SharePoint integration, Azure DevOps work items, Power BI queries, storage and querying (Blob, Cosmos DB, AI Search), AI operations (embeddings), and local filesystem access. See the full [Tool Reference](docs/TOOLS.md) for details.
 - **3 built-in agents** — `doc-processor` (extraction specialist), `data-analyst` (analysis and querying), `qa-reviewer` (validation and confidence scoring). Users can create additional custom agents.
 - **Skills system** — Markdown + YAML packages of domain expertise (e.g., invoice processing) with three levels of progressive disclosure. Skills are loaded into agent context on demand.
 - **Scheduling engine** — APScheduler + distributed locking. Supports cron, interval, Event Grid, and webhook triggers.
@@ -612,6 +607,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 - **Issues**: Report bugs and request features on [GitHub Issues](../../issues)
 - **Discussions**: Ask questions and share ideas in [Discussions](../../discussions)
+- **Tool Reference**: See [docs/TOOLS.md](docs/TOOLS.md) for the complete list of 38 built-in tools with parameters and usage
 - **Documentation**: Check the [docs](docs/README.md) directory for architecture decisions, specs, and operational guides
 
 ---

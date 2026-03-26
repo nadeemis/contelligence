@@ -26,6 +26,8 @@ export interface ElectronAPI {
     azure?: { name: string; email: string; tenantId: string };
   }>;
   onBackendRestarted(callback: () => void): () => void;
+  getSamplePrompts(): Promise<Array<{ category: string; prompts: string[] }>>;
+  openSamplePromptsEditor(): Promise<void>;
 }
 
 declare global {

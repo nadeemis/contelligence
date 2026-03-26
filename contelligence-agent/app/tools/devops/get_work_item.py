@@ -97,7 +97,5 @@ async def get_work_item(
         }
 
     except Exception as exc:
-        logger.exception(
-            "devops_get_work_item failed for id=%s", params.work_item_id,
-        )
+        logger.exception(f"devops_get_work_item failed for id={params.work_item_id}", exc_info=exc)
         return {"error": str(exc), "work_item_id": params.work_item_id}

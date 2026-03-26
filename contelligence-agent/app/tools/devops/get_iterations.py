@@ -119,7 +119,7 @@ async def get_iterations(
         return {"count": len(iterations), "iterations": iterations}
 
     except Exception as exc:
-        logger.exception("devops_get_iterations failed")
+        logger.exception("devops_get_iterations failed", exc_info=exc)
         return {"error": str(exc)}
 
 

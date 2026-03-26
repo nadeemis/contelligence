@@ -51,4 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('backend-restarted', handler);
     return () => ipcRenderer.removeListener('backend-restarted', handler);
   },
+
+  // Sample prompts (user-editable JSON file)
+  getSamplePrompts: (): Promise<Array<{ category: string; prompts: string[] }>> =>
+    ipcRenderer.invoke('get-sample-prompts'),
+  openSamplePromptsEditor: (): Promise<void> =>
+    ipcRenderer.invoke('open-sample-prompts-editor'),
 });

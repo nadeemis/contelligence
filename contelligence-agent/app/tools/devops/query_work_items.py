@@ -138,5 +138,5 @@ async def query_work_items(
         return result
 
     except Exception as exc:
-        logger.exception("devops_query_work_items failed")
+        logger.exception("devops_query_work_items failed", exc_info=exc)
         return {"error": str(exc)}

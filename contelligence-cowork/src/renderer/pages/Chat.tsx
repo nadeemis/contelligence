@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { User, StopCircle, Wrench, Clock, FileText, AlertCircle, Radio, Plus, ArrowDownToLine, PauseCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { User, StopCircle, Wrench, Clock, FileText, AlertCircle, Radio, Plus, ArrowDownToLine, PauseCircle, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ChatAgentPicker } from "@/components/ChatAgentPicker";
@@ -22,6 +22,7 @@ import { formatDate, formatDuration, statusIcon } from "@/lib/format";
 import type { ConversationTurn } from "@/types";
 import type { AgentEventUnion } from "@/types/agent-events";
 import { set } from "date-fns";
+import type { SamplePromptCategory } from "@/data/sample-prompts";
 
 const Chat = () => {
   const { sessionId: urlSessionId } = useParams();
@@ -38,7 +39,17 @@ const Chat = () => {
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryFullyExpanded, setSummaryFullyExpanded] = useState(false);
   const [instructError, setInstructError] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Record<number, boolean>>({ 0: true });
+  const [draftInput, setDraftInput] = useState("");
   const prevIsStreamingRef = useRef(false);
+
+  // ── Load sample prompts from user-editable file via IPC ──
+  const [samplePrompts, setSamplePrompts] = useState<SamplePromptCategory[]>([]);
+  useEffect(() => {
+    window.electronAPI?.getSamplePrompts().then((data) => {
+      if (Array.isArray(data)) setSamplePrompts(data);
+    });
+  }, []);
 
   // ── Fetch available models from backend ──
   const { data: availableModels = [] } = useQuery({
@@ -455,9 +466,54 @@ const Chat = () => {
           </div>
         )}
         <CardContent ref={scrollRef} className="flex-1 overflow-auto p-4 space-y-4">
-          {!isExistingSession && events.length === 0 && userMessages.length === 0 && (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-              Send an instruction to start a new session
+          {!isExistingSession && events.length === 0 && userMessages.length === 0 && samplePrompts.length > 0 && (
+            <div className="flex flex-col gap-4 py-2 max-w-3xl mx-auto w-full">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Send an instruction to start a new session. Here are some ideas:</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => window.electronAPI?.openSamplePromptsEditor()}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Edit sample prompts file</TooltipContent>
+                </Tooltip>
+              </div>
+              {samplePrompts.map((cat, ci) => {
+                const isOpen = !!expandedCategories[ci];
+                return (
+                  <div key={ci} className="rounded-lg border border-border bg-secondary/30">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-secondary/60 rounded-lg transition-colors"
+                      onClick={() => setExpandedCategories((prev) => ({ ...prev, [ci]: !prev[ci] }))}
+                    >
+                      {cat.category}
+                      {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
+                    {isOpen && (
+                      <ul className="px-3 pb-2 space-y-1.5">
+                        {cat.prompts.map((prompt, pi) => (
+                          <li key={pi}>
+                            <button
+                              type="button"
+                              className="w-full text-left text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-md px-2 py-1.5 transition-colors"
+                              onClick={() => setDraftInput(prompt)}
+                            >
+                              {prompt}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -509,6 +565,8 @@ const Chat = () => {
         <ChatInput
           onSend={handleSend}
           disabled={sendInstruction.isPending || sendReply.isPending}
+          externalValue={draftInput}
+          onExternalValueConsumed={() => setDraftInput("")}
           placeholder={
             isStreaming
               ? "Reply to agent..."
