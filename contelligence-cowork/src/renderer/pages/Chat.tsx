@@ -554,14 +554,14 @@ const Chat = () => {
       </Card>
 
       <div className="mt-4 space-y-3">
-        <ChatAgentPicker
+        {/* <ChatAgentPicker
           selected={selectedAgents}
           onSelectionChange={setSelectedAgents}
         />
         <ChatSkillPicker
           selected={selectedSkills}
           onSelectionChange={setSelectedSkills}
-        />
+        /> */}
         <ChatInput
           onSend={handleSend}
           disabled={sendInstruction.isPending || sendReply.isPending}
