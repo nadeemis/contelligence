@@ -18,10 +18,12 @@ from .desktop import DESKTOP_TOOLS
 from .browser import BROWSER_TOOLS
 from .msteams import MSTEAMS_TOOLS
 from .sharepoint import SHAREPOINT_TOOLS
+from .creation import CREATION_TOOLS
 
 ALL_TOOLS = EXTRACTION_TOOLS + STORAGE_TOOLS + AI_TOOLS \
           + DEVOPS_TOOLS + POWERBI_TOOLS \
-          + DESKTOP_TOOLS + BROWSER_TOOLS + MSTEAMS_TOOLS + SHAREPOINT_TOOLS
+          + DESKTOP_TOOLS + BROWSER_TOOLS + MSTEAMS_TOOLS + SHAREPOINT_TOOLS \
+          + CREATION_TOOLS
 
 
 def register_all_tools(registry: ToolRegistry) -> None:

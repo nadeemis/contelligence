@@ -83,6 +83,7 @@ class CopilotClientFactory:
             client = CopilotClient(
                 config=SubprocessConfig(
                     cli_path=opts.get("cli_path"),
+                    cli_args=opts.get("cli_args", []),
                     log_level=opts.get("log_level", "info"),
                     cwd=opts.get("cli_cwd"),
                     github_token=opts.get("github_token"),
