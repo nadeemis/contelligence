@@ -52,7 +52,25 @@ class ExtractPdfParams(BaseModel):
         True, description="Whether to extract tables from the PDF."
     )
     extract_images: bool = Field(
-        False, description="Whether to extract embedded image metadata."
+        False,
+        description=(
+            "Whether to extract embedded images from the PDF. "
+            "Images are returned as base64-encoded PNGs with metadata "
+            "(page number, dimensions, size)."
+        ),
+    )
+    page_screenshots: bool = Field(
+        False,
+        description=(
+            "Whether to render full-page screenshots of each processed page. "
+            "Screenshots are returned as base64-encoded PNGs."
+        ),
+    )
+    screenshot_dpi: int = Field(
+        150,
+        description="DPI resolution for page screenshots. Higher values produce larger, sharper images.",
+        ge=72,
+        le=600,
     )
     pages: str | None = Field(
         None,
@@ -103,12 +121,13 @@ def _parse_pages(pages_str: str, total_pages: int) -> set[int]:
 @define_tool(
     name="extract_pdf",
     description=(
-        "Extract text, tables, and metadata from a PDF file. Accepts the file "
+        "Extract text, tables, images, and metadata from a PDF file. Accepts the file "
         "as raw bytes (file_bytes), base64-encoded bytes (file_bytes_b64), a "
         "local filesystem path (local_path), or reads from Azure Blob Storage "
         "(storage_account + container + path). Returns a markdown document (default) or "
         "structured JSON. Uses PyMuPDF (pymupdf) for fast, accurate "
-        "extraction. Supports page-range filtering and optional table extraction."
+        "extraction. Supports page-range filtering, table extraction, embedded image "
+        "extraction (base64-encoded), and full-page screenshot rendering."
     ),
     parameters_model=ExtractPdfParams,
 )
@@ -170,6 +189,8 @@ async def extract_pdf(params: ExtractPdfParams, context: dict) -> dict[str, Any]
 
         all_text: list[str] = []
         all_tables: list[dict[str, Any]] = []
+        all_images: list[dict[str, Any]] = []
+        all_screenshots: list[dict[str, Any]] = []
 
         for page_num in sorted(page_indices):
             page = doc[page_num]
@@ -203,25 +224,110 @@ async def extract_pdf(params: ExtractPdfParams, context: dict) -> dict[str, Any]
                         tbl_err,
                     )
 
+            # --- embedded images ---
+            if params.extract_images:
+                try:
+                    image_list = page.get_images(full=True)
+                    for img_index, img_info in enumerate(image_list):
+                        xref = img_info[0]
+                        try:
+                            base_image = doc.extract_image(xref)
+                            if not base_image or not base_image.get("image"):
+                                continue
+                            img_data = base_image["image"]
+                            img_ext = base_image.get("ext", "png")
+                            # Convert to PNG if not already PNG for consistency
+                            if img_ext.lower() != "png":
+                                pix = pymupdf.Pixmap(img_data)
+                                png_bytes = pix.tobytes("png")
+                            else:
+                                png_bytes = img_data
+                            img_b64 = base64.b64encode(png_bytes).decode("ascii")
+                            all_images.append(
+                                {
+                                    "page": page_num + 1,
+                                    "index": img_index,
+                                    "width": base_image.get("width", 0),
+                                    "height": base_image.get("height", 0),
+                                    "colorspace": base_image.get("cs-name", ""),
+                                    "bpc": base_image.get("bpc", 0),
+                                    "size_bytes": len(img_data),
+                                    "image_b64": img_b64,
+                                    "mime_type": "image/png",
+                                }
+                            )
+                        except Exception as img_err:
+                            logger.warning(
+                                "Failed to extract image xref=%d on page %d: %s",
+                                xref,
+                                page_num + 1,
+                                img_err,
+                            )
+                except Exception as img_list_err:
+                    logger.warning(
+                        "Image listing failed on page %d: %s",
+                        page_num + 1,
+                        img_list_err,
+                    )
+
+            # --- page screenshots ---
+            if params.page_screenshots:
+                try:
+                    zoom = params.screenshot_dpi / 72.0
+                    mat = pymupdf.Matrix(zoom, zoom)
+                    pix = page.get_pixmap(matrix=mat)
+                    png_bytes = pix.tobytes("png")
+                    screenshot_b64 = base64.b64encode(png_bytes).decode("ascii")
+                    all_screenshots.append(
+                        {
+                            "page": page_num + 1,
+                            "width": pix.width,
+                            "height": pix.height,
+                            "dpi": params.screenshot_dpi,
+                            "size_bytes": len(png_bytes),
+                            "image_b64": screenshot_b64,
+                            "mime_type": "image/png",
+                        }
+                    )
+                except Exception as ss_err:
+                    logger.warning(
+                        "Page screenshot failed on page %d: %s",
+                        page_num + 1,
+                        ss_err,
+                    )
+
         metadata = dict(doc.metadata) if doc.metadata else {}
         doc.close()
 
         label = params.filename or params.local_path or params.path or "unknown.pdf"
 
         if params.format == "markdown":
-            return {
+            result: dict[str, Any] = {
                 "filename": label,
                 "page_count": total_pages,
-                "content": _pdf_to_markdown(label, all_text, all_tables, metadata),
+                "content": _pdf_to_markdown(
+                    label, all_text, all_tables, metadata,
+                    all_images, all_screenshots,
+                ),
             }
+            if all_images:
+                result["images"] = all_images
+            if all_screenshots:
+                result["screenshots"] = all_screenshots
+            return result
 
-        return {
+        result = {
             "filename": label,
             "page_count": total_pages,
             "text": "\n".join(all_text),
             "tables": all_tables,
             "metadata": metadata,
         }
+        if all_images:
+            result["images"] = all_images
+        if all_screenshots:
+            result["screenshots"] = all_screenshots
+        return result
 
     except Exception as exc:
         label = params.filename or params.local_path or params.path or "unknown.pdf"
@@ -238,6 +344,8 @@ def _pdf_to_markdown(
     page_texts: list[str],
     tables: list[dict[str, Any]],
     metadata: dict[str, Any],
+    images: list[dict[str, Any]] | None = None,
+    screenshots: list[dict[str, Any]] | None = None,
 ) -> str:
     """Convert extracted PDF data into a readable markdown document."""
     parts: list[str] = [f"# {label}", ""]
@@ -275,6 +383,44 @@ def _pdf_to_markdown(
                 parts.append("| " + " | ".join("---" for _ in headers) + " |")
                 for row in rows:
                     parts.append("| " + " | ".join(str(c) if c else "" for c in row) + " |")
+            parts.append("")
+
+    # Embedded images
+    if images:
+        parts.append("## Embedded Images")
+        parts.append("")
+        for img in images:
+            page_num = img.get("page", "?")
+            idx = img.get("index", 0)
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+            size = img.get("size_bytes", 0)
+            b64 = img.get("image_b64", "")
+            parts.append(f"### Image {idx + 1} (page {page_num})")
+            parts.append("")
+            parts.append(f"- **Dimensions:** {w} x {h}")
+            parts.append(f"- **Size:** {size:,} bytes")
+            if b64:
+                parts.append("")
+                parts.append(f"![Image {idx + 1} from page {page_num}](data:image/png;base64,{b64})")
+            parts.append("")
+
+    # Page screenshots
+    if screenshots:
+        parts.append("## Page Screenshots")
+        parts.append("")
+        for ss in screenshots:
+            page_num = ss.get("page", "?")
+            w = ss.get("width", 0)
+            h = ss.get("height", 0)
+            dpi = ss.get("dpi", 0)
+            b64 = ss.get("image_b64", "")
+            parts.append(f"### Page {page_num} Screenshot")
+            parts.append("")
+            parts.append(f"- **Dimensions:** {w} x {h} ({dpi} DPI)")
+            if b64:
+                parts.append("")
+                parts.append(f"![Page {page_num} screenshot](data:image/png;base64,{b64})")
             parts.append("")
 
     return "\n".join(parts).rstrip() + "\n"
