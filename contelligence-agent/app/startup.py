@@ -291,6 +291,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         "log_level": "info",
         "auto_start": True,
         "cli_cwd": os.path.expanduser(settings.CLI_WORKING_DIRECTORY) if settings.CLI_WORKING_DIRECTORY else None,
+        "cli_args": settings.COPILOT_CLI_ARGS or [],
     }
 
     cli_path = settings.COPILOT_CLI_PATH
@@ -404,7 +405,7 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         default_model=settings.COPILOT_MODEL,
         provider_config=provider_config,
         mcp_servers=mcp_config,
-        working_directory=settings.CLI_WORKING_DIRECTORY or None,
+        working_directory=os.path.expanduser(settings.CLI_WORKING_DIRECTORY) if settings.CLI_WORKING_DIRECTORY else None,
         skill_directories=skills_manager.get_skill_directories(),
     )
 

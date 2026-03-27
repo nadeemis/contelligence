@@ -32,11 +32,17 @@ class AppSettings(BaseSettings):
     # built-in skills dir.
     AGENT_SHARED_SKILLS_DIRECTORY: str = ""
     CLI_SHARED_SKILLS_DIRECTORY: str = ""
+    COPILOT_CLI_ARGS: str = ""  # Additional CLI args for CopilotClient subprocess (e.g. ["--verbose"]), comma-separated when set via env var
     
     @field_validator("AGENT_SHARED_SKILLS_DIRECTORY", mode="after")
     @classmethod
     def _expand_shared_skills_dir(cls, v: str) -> str:
         return os.path.expanduser(v) if v else v
+    
+    @field_validator("COPILOT_CLI_ARGS", mode="after")
+    @classmethod
+    def _expand_copilot_cli_args(cls, v: str) -> list[str]:
+        return [v.strip() for v in v.split(",")] if v else []
 
     # RBAC
     AUTH_ENABLED: bool = False
