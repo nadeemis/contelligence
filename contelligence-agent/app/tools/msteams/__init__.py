@@ -16,6 +16,7 @@ from .get_channel_messages import get_channel_messages
 from .get_calendar import get_calendar
 from .get_calendar_event import get_calendar_event
 from .get_online_meeting import get_online_meeting
+from .send_chat_message import send_chat_message
 
 MSTEAMS_TOOLS = [
     get_chats,
@@ -26,4 +27,5 @@ MSTEAMS_TOOLS = [
     get_calendar,
     get_calendar_event,
     get_online_meeting,
+    send_chat_message,
 ]
