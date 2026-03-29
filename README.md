@@ -72,10 +72,10 @@ Contelligence Cowork puts the full power of the Contelligence agent on your desk
 
 1. **Download and install Contelligence Cowork**
 
-   **Download the latest release from GitHub**: [Releases](https://github.com/nadeemis/contelligence/releases)
+   **[⬇️ Download the latest release from Releases](https://github.com/nadeemis/contelligence/releases)**
 
-   - [![Install for Windows](https://img.shields.io/badge/Windows-8A2BE2)](https://github.com/nadeemis/contelligence/releases/download/v0.1.0/Contelligence-0.1.0.Setup.exe): Squirrel installer (`.exe`) → auto-installs and creates shortcuts
-   - [![Install for macOS](https://img.shields.io/badge/macOS-8A2BE2)](https://github.com/nadeemis/contelligence/releases/download/v0.1.0/Contelligence-darwin-arm64-0.1.0.zip): `.zip` archive → extract and move to Applications
+   - Windows: Squirrel installer (`.exe`) → auto-installs and creates shortcuts
+   - macOS: `.zip` archive → extract and move to Applications
    
 2. **Install GitHub Copilot CLI** (if not already installed)  
    Detailed instructions for Copilot CLI setup can be found in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started).

@@ -1,7 +1,7 @@
 {
   "name": "contelligence-cowork",
   "productName": "Contelligence",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Contelligence Desktop — AI-native content intelligence platform",
   "main": ".vite/build/main.js",
   "private": true,
