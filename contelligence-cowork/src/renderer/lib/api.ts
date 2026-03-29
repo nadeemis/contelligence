@@ -25,6 +25,7 @@ import type {
   ToolInfo,
   McpServerEntry,
   McpServerHealthResult,
+  McpToolEntry,
   AddMcpServerRequest,
   SkillRecord,
   SkillSummary,
@@ -281,6 +282,9 @@ export const mcpServersApi = {
     apiFetch<McpServerHealthResult>(`/mcp-servers/${encodeURIComponent(key)}/test`, {
       method: "POST",
     }),
+
+  tools: (key: string) =>
+    apiFetch<McpToolEntry[]>(`/mcp-servers/${encodeURIComponent(key)}/tools`),
 };
 
 // ── Skills API ───────────────────────────

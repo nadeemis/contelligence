@@ -20,6 +20,7 @@ export interface ElectronAPI {
   showOpenDialog(options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue>;
   showSaveDialog(options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue>;
   getNativeTheme(): Promise<boolean>;
+  onNativeThemeChanged(callback: (isDark: boolean) => void): () => void;
   getAzureStatus(): Promise<{ available: boolean; loggedIn: boolean; error?: string }>;
   getUserIdentity(): Promise<{
     machine: { username: string; fullName: string };

@@ -79,10 +79,11 @@ class TestExtractServers:
             "mcpServers": {
                 "a": {"type": "http", "url": "http://x"},
                 "b": {"type": "stdio", "command": ["node", "server.js"]},
+                "c": {"type": "sse", "url": "http://sse-server"},
             }
         }
         result = _extract_servers(data)
-        assert set(result.keys()) == {"a", "b"}
+        assert set(result.keys()) == {"a", "b", "c"}
 
     def test_skips_non_dict_server(self) -> None:
         data = {"mcpServers": {"bad": "string_value"}}
@@ -93,6 +94,34 @@ class TestExtractServers:
         data = {"mcpServers": {"ws": {"type": "websocket", "url": "ws://x"}}}
         result = _extract_servers(data)
         assert result == {}
+
+    def test_skips_local_and_empty_types(self) -> None:
+        """Copilot configs may have type='local' or empty type for extension-hosted servers."""
+        data = {
+            "mcpServers": {
+                "ext1": {"type": "local", "command": "some-ext"},
+                "ext2": {"type": "", "command": "another-ext"},
+                "ext3": {"command": "no-type"},
+                "good": {"type": "stdio", "command": "npx", "args": ["-y", "pkg"]},
+            }
+        }
+        result = _extract_servers(data)
+        assert set(result.keys()) == {"good"}
+
+    def test_accepts_string_command_from_copilot_config(self) -> None:
+        """Copilot MCP config uses command as a string, not an array."""
+        data = {
+            "mcpServers": {
+                "copilot-style": {
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@some/mcp-server"],
+                },
+            }
+        }
+        result = _extract_servers(data)
+        assert "copilot-style" in result
+        assert result["copilot-style"]["command"] == "npx"
 
     def test_returns_empty_when_no_mcpServers_key(self) -> None:
         result = _extract_servers({"other": "stuff"})

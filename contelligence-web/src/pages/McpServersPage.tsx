@@ -101,16 +101,16 @@ function ServerDialog({ open, onOpenChange, onSubmit, isSubmitting, initial }: S
       return null;
     }
     const cfg = parsed as Record<string, any>;
-    if (cfg.type !== "stdio" && cfg.type !== "http") {
-      setConfigError('"type" must be "stdio" or "http"');
+    if (cfg.type !== "stdio" && cfg.type !== "http" && cfg.type !== "sse") {
+      setConfigError('"type" must be "stdio", "http", or "sse"');
       return null;
     }
     if (cfg.type === "stdio" && !cfg.command) {
       setConfigError('"command" is required for stdio servers');
       return null;
     }
-    if (cfg.type === "http" && !cfg.url) {
-      setConfigError('"url" is required for HTTP servers');
+    if ((cfg.type === "http" || cfg.type === "sse") && !cfg.url) {
+      setConfigError('"url" is required for HTTP/SSE servers';
       return null;
     }
     setConfigError(null);
@@ -372,8 +372,16 @@ export default function McpServersPage() {
                       </div>
                       <p className="text-xs text-muted-foreground font-mono truncate max-w-lg">
                         {transport === "stdio"
-                          ? (server.config?.command as string[])?.join(" ") ?? "—"
-                          : (server.config?.url as string) ?? "—"}
+                          ? (() => {
+                              const cmd = server.config?.command;
+                              const args = server.config?.args;
+                              if (Array.isArray(cmd)) return cmd.join(" ");
+                              if (typeof cmd === "string") {
+                                return Array.isArray(args) ? [cmd, ...args].join(" ") : cmd;
+                              }
+                              return "—";
+                            })()
+                          : String(server.config?.url ?? "—")}
                       </p>
                       {health?.detail && (
                         <p className="text-xs text-muted-foreground">

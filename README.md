@@ -39,8 +39,9 @@ Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app t
 
 ## Contelligence Cowork — Desktop App
 
-[![Install for Windows](https://img.shields.io/badge/Windows-8A2BE2)](#desktop-frontend--contelligence-cowork)
-[![Install for macOS](https://img.shields.io/badge/macOS-8A2BE2)](#desktop-frontend--contelligence-cowork)
+[![Install for Windows](https://img.shields.io/badge/Windows-8A2BE2)](#-setup-steps)
+[![Install for macOS](https://img.shields.io/badge/macOS-8A2BE2)](#-setup-steps)
+[![GitHub Copilot Required](https://img.shields.io/badge/GitHub%20Copilot-Required-red)](#-setup-steps)
 
 **Contelligence Cowork** is the desktop application — a fully self-contained, native experience that bundles the AI agent, backend, and UI into a single installable app. No cloud account, no Docker, no infrastructure setup. Download, install, and start processing content with AI immediately.
 
@@ -67,15 +68,16 @@ Contelligence Cowork puts the full power of the Contelligence agent on your desk
 | **Azure CLI** (optional) | Required only if connecting to Azure services (Blob, Cosmos, AI Search, etc.) |
 | **Disk space** | ~200 MB for the application + space for your documents and local database |
 
-#### 🔌 Setup Steps
+## 🔌 Setup Steps
 
 1. **Download and install Contelligence Cowork**
 
-   Download the installer for your platform:
-   - macOS: `.zip` archive → extract and move to Applications
-   - Windows: Squirrel installer (`.exe`) → auto-installs and creates shortcuts
+   **Download the latest release from GitHub**: [Releases](https://github.com/nadeemis/contelligence/releases)
 
-2. **Install GitHub Copilot CLI**  
+   - [![Install for Windows](https://img.shields.io/badge/Windows-8A2BE2)](https://github.com/nadeemis/contelligence/releases/download/v0.1.0/Contelligence-0.1.0.Setup.exe): Squirrel installer (`.exe`) → auto-installs and creates shortcuts
+   - [![Install for macOS](https://img.shields.io/badge/macOS-8A2BE2)](https://github.com/nadeemis/contelligence/releases/download/v0.1.0/Contelligence-darwin-arm64-0.1.0.zip): `.zip` archive → extract and move to Applications
+   
+2. **Install GitHub Copilot CLI** (if not already installed)  
    Detailed instructions for Copilot CLI setup can be found in the [GitHub Copilot CLI Docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started).
 
    ```bash

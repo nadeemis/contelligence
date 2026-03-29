@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Theme
   getNativeTheme: (): Promise<boolean> => ipcRenderer.invoke('get-native-theme'),
+  onNativeThemeChanged: (callback: (isDark: boolean) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, isDark: boolean) => callback(isDark);
+    ipcRenderer.on('native-theme-changed', handler);
+    return () => ipcRenderer.removeListener('native-theme-changed', handler);
+  },
 
   // Azure CLI status
   getAzureStatus: (): Promise<{ available: boolean; loggedIn: boolean; error?: string }> =>

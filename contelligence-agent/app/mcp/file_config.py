@@ -62,14 +62,15 @@ def _extract_servers(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if not isinstance(cfg, dict):
             logger.warning("MCP server '%s' config is not an object — skipping", name)
             continue
-        transport = cfg.get("type", "")
-        if transport not in ("stdio", "http"):
+        mcp_type = cfg.get("type", "")
+        if mcp_type not in ("local", "stdio", "http", "sse"):
             logger.warning(
                 "MCP server '%s' has unsupported type '%s' — skipping",
                 name,
-                transport,
+                mcp_type,
             )
             continue
+        cfg["source"] = "contelligence"
         validated[name] = cfg
     return validated
 
@@ -114,6 +115,16 @@ def load_file_based_servers(
     if not isinstance(exclude, list):
         exclude = []
     app_servers = _extract_servers(app_data)
+    
+    if app_servers:
+        logger.info(
+            "Loaded %d server(s) from app config: %s",
+            len(app_servers),
+            _app_path,
+        )
+        # apply source for each server for better logging later
+        for cfg in app_servers.values():
+            cfg["source"] = "contelligence_app_config"
 
     # --- Shared ecosystem config ---------------------------------------
     shared_servers: dict[str, dict[str, Any]] = {}
@@ -123,6 +134,8 @@ def load_file_based_servers(
         shared_servers = _extract_servers(shared_data)
         if shared_servers:
             imported_shared = True
+            for cfg in shared_servers.values():
+                cfg["source"] = "copilot_shared_config"
             logger.info(
                 "Imported %d server(s) from shared config: %s",
                 len(shared_servers),
@@ -131,13 +144,6 @@ def load_file_based_servers(
 
     # --- Merge: shared underneath, app on top --------------------------
     merged = {**shared_servers, **app_servers}
-
-    if app_servers:
-        logger.info(
-            "Loaded %d server(s) from app config: %s",
-            len(app_servers),
-            _app_path,
-        )
 
     return merged, exclude, imported_shared
 

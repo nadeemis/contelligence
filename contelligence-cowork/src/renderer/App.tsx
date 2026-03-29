@@ -5,6 +5,7 @@ import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-qu
 import { toast } from "sonner";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { lazy, Suspense, useEffect } from "react";
 
 // Lazy-load pages for code splitting
@@ -58,39 +59,41 @@ const App = () => {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <HashRouter>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/chat" element={<ChatPage />} />
-                <Route path="/chat/:sessionId" element={<ChatPage />} />
-                <Route path="/sessions" element={<SessionsPage />} />
-                <Route path="/sessions/:id" element={<SessionDetailPage />} />
-                <Route path="/schedules" element={<SchedulesPage />} />
-                <Route path="/schedules/new" element={<ScheduleFormPage />} />
-                <Route path="/schedules/:id" element={<ScheduleDetailPage />} />
-                <Route path="/schedules/:id/edit" element={<ScheduleFormPage />} />
-                <Route path="/metrics" element={<MetricsPage />} />
-                <Route path="/agents" element={<AgentsPage />} />
-                <Route path="/agents/new" element={<AgentEditorPage />} />
-                <Route path="/agents/:agentId" element={<AgentEditorPage />} />
-                <Route path="/skills" element={<SkillsPage />} />
-                <Route path="/skills/new" element={<SkillEditorPage />} />
-                <Route path="/skills/:skillId" element={<SkillEditorPage />} />
-                <Route path="/mcp-servers" element={<McpServersPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Route>
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </Suspense>
-        </HashRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <HashRouter>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<ChatPage />} />
+                  <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/chat/:sessionId" element={<ChatPage />} />
+                  <Route path="/sessions" element={<SessionsPage />} />
+                  <Route path="/sessions/:id" element={<SessionDetailPage />} />
+                  <Route path="/schedules" element={<SchedulesPage />} />
+                  <Route path="/schedules/new" element={<ScheduleFormPage />} />
+                  <Route path="/schedules/:id" element={<ScheduleDetailPage />} />
+                  <Route path="/schedules/:id/edit" element={<ScheduleFormPage />} />
+                  <Route path="/metrics" element={<MetricsPage />} />
+                  <Route path="/agents" element={<AgentsPage />} />
+                  <Route path="/agents/new" element={<AgentEditorPage />} />
+                  <Route path="/agents/:agentId" element={<AgentEditorPage />} />
+                  <Route path="/skills" element={<SkillsPage />} />
+                  <Route path="/skills/new" element={<SkillEditorPage />} />
+                  <Route path="/skills/:skillId" element={<SkillEditorPage />} />
+                  <Route path="/mcp-servers" element={<McpServersPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
+          </HashRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 };
 

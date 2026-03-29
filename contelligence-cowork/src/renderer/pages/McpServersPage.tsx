@@ -36,10 +36,11 @@ import {
   XCircle,
   AlertTriangle,
   Loader2,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import { mcpServersApi } from "@/lib/api";
-import type { McpServerEntry, McpServerHealthResult, AddMcpServerRequest } from "@/types";
+import type { McpServerEntry, McpServerHealthResult, McpToolEntry, AddMcpServerRequest } from "@/types";
 
 /* ── Server Dialog (Add / Edit) ────────────── */
 
@@ -105,16 +106,16 @@ function ServerDialog({ open, onOpenChange, onSubmit, isSubmitting, initial }: S
       return null;
     }
     const cfg = parsed as Record<string, any>;
-    if (cfg.type !== "stdio" && cfg.type !== "http") {
-      setConfigError('"type" must be "stdio" or "http"');
+    if (cfg.type !== "stdio" && cfg.type !== "http" && cfg.type !== "sse") {
+      setConfigError('"type" must be "stdio", "http", or "sse"');
       return null;
     }
     if (cfg.type === "stdio" && !cfg.command) {
       setConfigError('"command" is required for stdio servers');
       return null;
     }
-    if (cfg.type === "http" && !cfg.url) {
-      setConfigError('"url" is required for HTTP servers');
+    if ((cfg.type === "http" || cfg.type === "sse") && !cfg.url) {
+      setConfigError('"url" is required for HTTP/SSE servers');
       return null;
     }
     setConfigError(null);
@@ -190,6 +191,89 @@ function ServerDialog({ open, onOpenChange, onSubmit, isSubmitting, initial }: S
   );
 }
 
+/* ── Tools Dialog ──────────────────────────── */
+
+interface ToolsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  serverName: string;
+  tools: McpToolEntry[];
+  isLoading: boolean;
+  error: string | null;
+}
+
+function ToolsDialog({ open, onOpenChange, serverName, tools, isLoading, error }: ToolsDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Tools — {serverName}</DialogTitle>
+          <DialogDescription>
+            {isLoading
+              ? "Connecting to server…"
+              : error
+                ? "Failed to retrieve tools"
+                : `${tools.length} tool${tools.length !== 1 ? "s" : ""} available`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto py-2 space-y-3">
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {!isLoading && !error && tools.length === 0 && (
+            <p className="text-center text-sm text-muted-foreground py-8">
+              This server does not expose any tools.
+            </p>
+          )}
+
+          {!isLoading &&
+            !error &&
+            tools.map((tool) => (
+              <div
+                key={tool.name}
+                className="rounded-md border p-3 space-y-1"
+              >
+                <div className="flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-primary shrink-0" />
+                  <span className="font-mono text-sm font-medium">{tool.name}</span>
+                </div>
+                {tool.description && (
+                  <p className="text-xs text-muted-foreground pl-6">{tool.description}</p>
+                )}
+                {tool.inputSchema && Object.keys(tool.inputSchema).length > 0 && (
+                  <details className="pl-6">
+                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                      Input schema
+                    </summary>
+                    <pre className="mt-1 text-[10px] font-mono bg-muted rounded p-2 overflow-x-auto">
+                      {JSON.stringify(tool.inputSchema, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ── Health Status Icon ────────────────────── */
 
 function HealthIcon({ status }: { status: string }) {
@@ -214,6 +298,10 @@ export default function McpServersPage() {
   const [deleteTarget, setDeleteTarget] = useState<McpServerEntry | null>(null);
   const [healthResults, setHealthResults] = useState<Record<string, McpServerHealthResult>>({});
   const [testingKeys, setTestingKeys] = useState<Set<string>>(new Set());
+  const [toolsTarget, setToolsTarget] = useState<string | null>(null);
+  const [toolsList, setToolsList] = useState<McpToolEntry[]>([]);
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [toolsError, setToolsError] = useState<string | null>(null);
 
   // Fetch servers
   const {
@@ -291,7 +379,22 @@ export default function McpServersPage() {
       });
     }
   };
-
+  // Show tools
+  const handleShowTools = async (name: string) => {
+    setToolsTarget(name);
+    setToolsList([]);
+    setToolsError(null);
+    setToolsLoading(true);
+    try {
+      const tools = await mcpServersApi.tools(name);
+      setToolsList(tools);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to retrieve tools";
+      setToolsError(msg);
+    } finally {
+      setToolsLoading(false);
+    }
+  };
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -362,6 +465,17 @@ export default function McpServersPage() {
                         <Badge variant="outline" className="text-[10px]">
                           {transport.toUpperCase()}
                         </Badge>
+                        {server.config?.source && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {server.config.source === "contelligence_app_config"
+                              ? "Contelligence"
+                              : server.config.source === "copilot_shared_config"
+                              ? "Copilot" 
+                              : "Unknown"}
+                          </Badge>
+                         )
+
+                        }
                         {server.disabled && (
                           <Badge variant="destructive" className="text-[10px]">
                             DISABLED
@@ -375,9 +489,17 @@ export default function McpServersPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground font-mono truncate max-w-lg">
-                        {transport === "stdio"
-                          ? (server.config?.command as string[])?.join(" ") ?? "—"
-                          : (server.config?.url as string) ?? "—"}
+                        {transport === "stdio" || transport === "local"
+                          ? (() => {
+                              const cmd = server.config?.command;
+                              const args = server.config?.args;
+                              if (Array.isArray(cmd)) return cmd.join(" ");
+                              if (typeof cmd === "string") {
+                                return Array.isArray(args) ? [cmd, ...args].join(" ") : cmd;
+                              }
+                              return "—";
+                            })()
+                          : String(server.config?.url ?? "—")}
                       </p>
                       {health?.detail && (
                         <p className="text-xs text-muted-foreground">
@@ -426,6 +548,15 @@ export default function McpServersPage() {
                         <Activity className="h-4 w-4 mr-1" />
                       )}
                       Test
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleShowTools(server.name)}
+                    >
+                      <Wrench className="h-4 w-4 mr-1" />
+                      Tools
                     </Button>
 
                     <Button
@@ -482,6 +613,16 @@ export default function McpServersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Tools dialog */}
+      <ToolsDialog
+        open={!!toolsTarget}
+        onOpenChange={(open) => !open && setToolsTarget(null)}
+        serverName={toolsTarget ?? ""}
+        tools={toolsList}
+        isLoading={toolsLoading}
+        error={toolsError}
+      />
     </div>
   );
 }

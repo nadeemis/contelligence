@@ -1,4 +1,5 @@
 
+import logging
 from typing import Any
 
 from copilot import MCPLocalServerConfig, MCPRemoteServerConfig, MCPServerConfig
@@ -6,6 +7,8 @@ from copilot import MCPLocalServerConfig, MCPRemoteServerConfig, MCPServerConfig
 # ------------------------------------------------------------------
 # MCP config normalization
 # ------------------------------------------------------------------
+
+logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 def mcp_config_to_sdk_config(
     mcp_servers: dict[str, Any],
@@ -27,7 +30,11 @@ def mcp_config_to_sdk_config(
         elif entry.get("type") in ["http", "sse"]:
             entry = MCPRemoteServerConfig(**entry)
         else:
-            raise ValueError(f"Unknown MCP server type '{entry.get('type')}' for server '{name}'")
-
+            # log error and skip invalid server configs
+            logger.error(
+                f"MCP server '{name}' has unknown type '{entry.get('type')}' and will be skipped"
+            )
+            continue
+        
         normalized.append(entry)
     return normalized
