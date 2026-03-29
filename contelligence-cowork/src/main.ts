@@ -185,6 +185,11 @@ ipcMain.handle('show-save-dialog', async (_event, options) => {
 // Dark mode
 ipcMain.handle('get-native-theme', () => nativeTheme.shouldUseDarkColors);
 
+// Notify renderer when OS theme changes
+nativeTheme.on('updated', () => {
+  mainWindow?.webContents.send('native-theme-changed', nativeTheme.shouldUseDarkColors);
+});
+
 // Azure CLI status (available + logged-in) — consumed by renderer for UI banners
 let azureStatusCache: AzureLoginResult = { available: false, loggedIn: false };
 ipcMain.handle('get-azure-status', () => azureStatusCache);

@@ -20,7 +20,7 @@ from app.mcp.file_config import (
     remove_server,
     set_server_disabled,
 )
-from app.mcp.health import verify_mcp_servers
+from app.mcp.health import list_server_tools, verify_mcp_servers
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
@@ -65,6 +65,16 @@ class SetDisabledRequest(BaseModel):
     disabled: bool
 
 
+class McpToolEntry(BaseModel):
+    """A single tool exposed by an MCP server."""
+
+    name: str
+    description: str = ""
+    input_schema: dict[str, Any] = Field(default_factory=dict, alias="inputSchema")
+
+    model_config = {"populate_by_name": True}
+
+
 # ── Helpers ────────────────────────────────────────────────────
 
 
@@ -78,47 +88,87 @@ def _build_entry(name: str, cfg: dict[str, Any], exclude: list[str]) -> McpServe
 
 # ── Endpoints ──────────────────────────────────────────────────
 
-
 @router.get("", response_model=list[McpServerEntry])
 async def list_mcp_servers() -> list[McpServerEntry]:
     """List all MCP servers from merged config (including disabled ones)."""
-    servers, exclude, _ = load_file_based_servers()
-    return [_build_entry(name, cfg, exclude) for name, cfg in servers.items()]
-
-
+    try:
+        servers, exclude, _ = load_file_based_servers()
+        return [_build_entry(name, cfg, exclude) for name, cfg in servers.items()]
+    except Exception as e:
+        logger.error(f"Failed to load MCP servers: {e}")
+        raise HTTPException(500, "Failed to load MCP servers")
+    
+    
 @router.post("", response_model=McpServerEntry, status_code=201)
 async def add_mcp_server(body: AddServerRequest) -> McpServerEntry:
     """Add or update an MCP server in the app config."""
-    transport = body.config.get("type", "")
-    if transport not in ("stdio", "http"):
-        raise HTTPException(400, "config.type must be 'stdio' or 'http'")
-    if transport == "stdio" and not body.config.get("command"):
-        raise HTTPException(400, "stdio servers require a 'command' in config")
-    if transport == "http" and not body.config.get("url"):
-        raise HTTPException(400, "http servers require a 'url' in config")
+    mcp_type = body.config.get("type", "")
+    if mcp_type not in ("stdio", "http", "sse", "local"):
+        raise HTTPException(400, "config.type must be 'stdio', 'http', 'sse', or 'local'")
+    if mcp_type in ("stdio", "local") and not body.config.get("command"):
+        raise HTTPException(400, "stdio/local servers require a 'command' in config")
+    if mcp_type in ("http", "sse") and not body.config.get("url"):
+        raise HTTPException(400, "http/sse servers require a 'url' in config")
 
-    add_server(body.name, body.config)
-    return McpServerEntry(
-        name=body.name,
-        disabled=False,
-        config=body.config,
-    )
+    try:
+        add_server(body.name, body.config)
+        return McpServerEntry(
+            name=body.name,
+            disabled=False,
+            config=body.config,
+        )
+    except Exception as e:
+        logger.error(f"Failed to add MCP server: {e}")
+        raise HTTPException(500, "Failed to add MCP server")
 
 
 @router.delete("/{key}", status_code=204)
 async def delete_mcp_server(key: str) -> None:
     """Remove an MCP server from the app config."""
-    remove_server(key)
+    try:
+        remove_server(key)
+    except Exception as e:
+        logger.error(f"Failed to remove MCP server: {e}")
+        raise HTTPException(500, "Failed to remove MCP server")
 
 
 @router.patch("/{key}/disabled", response_model=McpServerEntry)
 async def toggle_mcp_server(key: str, body: SetDisabledRequest) -> McpServerEntry:
     """Enable or disable an MCP server (adds/removes from exclude list)."""
-    set_server_disabled(key, body.disabled)
-    # Re-read to return current state.
-    servers, exclude, _ = load_file_based_servers()
-    cfg = servers.get(key, {})
-    return _build_entry(key, cfg, exclude)
+    try:
+        set_server_disabled(key, body.disabled)
+        # Re-read to return current state.
+        servers, exclude, _ = load_file_based_servers()
+        cfg = servers.get(key, {})
+        return _build_entry(key, cfg, exclude)
+    except Exception as e:
+        logger.error(f"Failed to toggle MCP server: {e}")
+        raise HTTPException(500, "Failed to toggle MCP server")
+
+
+@router.get("/{key}/tools", response_model=list[McpToolEntry])
+async def show_tools(key: str) -> list[McpToolEntry]:
+    """Connect to an MCP server and list the tools it exposes."""
+    config = get_mcp_servers_config()
+    if key not in config:
+        servers, _, _ = load_file_based_servers()
+        if key not in servers:
+            raise HTTPException(404, f"MCP server '{key}' not found")
+        config = servers
+
+    try:
+        raw_tools = await list_server_tools(config[key])
+        return [
+            McpToolEntry(
+                name=t.get("name", "unknown"),
+                description=t.get("description", ""),
+                inputSchema=t.get("inputSchema", {}),
+            )
+            for t in raw_tools
+        ]
+    except Exception as e:
+        logger.error(f"Failed to list tools for MCP server '{key}': {e}", exc_info=True)
+        raise HTTPException(502, f"Failed to retrieve tools from MCP server '{key}': {e}")
 
 
 @router.post("/{key}/test", response_model=McpServerHealth)
@@ -132,11 +182,15 @@ async def test_mcp_server(key: str) -> McpServerHealth:
             raise HTTPException(404, f"MCP server '{key}' not found")
         config = servers
 
-    results = await verify_mcp_servers({key: config[key]})
-    result = results.get(key, {"status": "unavailable", "detail": "No result"})
-    return McpServerHealth(
-        key=key,
-        status=result.get("status", "unavailable"),
-        transport=result.get("transport", "unknown"),
-        detail=result.get("detail", ""),
-    )
+    try:
+        results = await verify_mcp_servers({key: config[key]})
+        result = results.get(key, {"status": "unavailable", "detail": "No result"})
+        return McpServerHealth(
+            key=key,
+            status=result.get("status", "unavailable"),
+            transport=result.get("transport", "unknown"),
+            detail=result.get("detail", ""),
+        )
+    except Exception as e:
+        logger.error(f"Failed to test MCP server: {e}")
+        raise HTTPException(500, "Failed to test MCP server")

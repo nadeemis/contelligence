@@ -371,6 +371,12 @@ export interface AddMcpServerRequest {
   config: Record<string, any>;
 }
 
+export interface McpToolEntry {
+  name: string;
+  description: string;
+  inputSchema: Record<string, any>;
+}
+
 export interface TestAgentRequest {
   instruction: string;
 }

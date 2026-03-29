@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { Bell } from "lucide-react";
+import { Bell, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
 import { UserMenu } from "@/components/UserMenu";
+import { HelpDialog } from "@/components/HelpDialog";
 
 const isElectron = typeof window !== "undefined" && !!window.electronAPI;
 const isMac = isElectron && navigator.platform.toLowerCase().includes("mac");
 
 export function AppLayout() {
+  const [helpOpen, setHelpOpen] = useState(false);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -19,6 +23,9 @@ export function AppLayout() {
               <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             </div>
             <div className="flex items-center gap-2 electron-no-drag">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => setHelpOpen(true)}>
+                <Info className="h-4 w-4" />
+              </Button>
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                 <Bell className="h-4 w-4" />
               </Button>
@@ -30,6 +37,7 @@ export function AppLayout() {
           </main>
         </div>
       </div>
+      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </SidebarProvider>
   );
 }

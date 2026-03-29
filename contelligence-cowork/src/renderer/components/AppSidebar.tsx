@@ -27,7 +27,7 @@ import {
 import contelligenceLogo from "/Contelligence-logo.png";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  // { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Chat", url: "/chat", icon: MessageSquare },
   { title: "Sessions", url: "/sessions", icon: List },
   { title: "Schedules", url: "/schedules", icon: CalendarClock },

@@ -1,6 +1,6 @@
 [project]
 name = "contelligence-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Contelligence Agent — Intelligent content processing."
 requires-python = ">=3.12"
 

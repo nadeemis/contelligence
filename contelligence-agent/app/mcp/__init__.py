@@ -9,11 +9,12 @@ from __future__ import annotations
 from .config import get_mcp_servers_config
 from .file_config import ensure_default_config, load_file_based_servers, save_app_config
 from .sdk_adapters import mcp_config_to_sdk_config
-from .health import verify_mcp_servers
+from .health import list_server_tools, verify_mcp_servers
 
 __all__ = [
     "ensure_default_config",
     "get_mcp_servers_config",
+    "list_server_tools",
     "load_file_based_servers",
     "save_app_config",
     "verify_mcp_servers",

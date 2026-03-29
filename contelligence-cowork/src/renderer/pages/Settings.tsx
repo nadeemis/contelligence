@@ -4,10 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText } from "lucide-react";
+import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText, Sun, Moon, Laptop } from "lucide-react";
 import { toast } from "sonner";
 import { healthApi, promptsApi } from "@/lib/api";
 import { PromptEditDialog } from "@/components/PromptEditDialog";
+import { useTheme, type Theme } from "@/components/ThemeProvider";
 import type { HealthStatus, EnvironmentInfo, PromptResponse } from "@/types";
 
 /* ── System Health Panel ─────────────────── */
@@ -272,11 +273,80 @@ function SystemPromptPanel() {
   );
 }
 
+/* ── Appearance Panel ─────────────────────── */
+
+const themeOptions: { value: Theme; label: string; icon: React.ReactNode; description: string }[] = [
+  { value: "system", label: "System", icon: <Laptop className="h-5 w-5" />, description: "Follow your OS appearance" },
+  { value: "light", label: "Light", icon: <Sun className="h-5 w-5" />, description: "Bright and warm" },
+  { value: "dark", label: "Dark", icon: <Moon className="h-5 w-5" />, description: "Easy on the eyes" },
+];
+
+function AppearanceCard() {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-foreground flex items-center gap-2">
+          <Sun className="h-5 w-5 text-primary" />
+          Appearance
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-3">
+          {themeOptions.map((opt) => {
+            const isActive = theme === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setTheme(opt.value)}
+                className={`
+                  group relative flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all duration-200
+                  ${isActive
+                    ? "border-primary bg-primary/10 shadow-sm shadow-primary/10"
+                    : "border-border bg-secondary/30 hover:border-primary/40 hover:bg-secondary/60"
+                  }
+                `}
+              >
+                {/* Theme preview swatch */}
+                <div className={`
+                  flex h-10 w-full items-center justify-center rounded-lg transition-colors
+                  ${opt.value === "dark"
+                    ? "bg-[hsl(220,10%,7%)] text-[hsl(40,50%,82%)]"
+                    : opt.value === "light"
+                      ? "bg-[hsl(40,25%,97%)] text-[hsl(220,15%,15%)]"
+                      : resolvedTheme === "dark"
+                        ? "bg-[hsl(220,10%,7%)] text-[hsl(40,50%,82%)]"
+                        : "bg-[hsl(40,25%,97%)] text-[hsl(220,15%,15%)]"
+                  }
+                `}>
+                  {opt.icon}
+                </div>
+                <span className={`text-sm font-medium ${isActive ? "text-primary" : "text-foreground"}`}>
+                  {opt.label}
+                </span>
+                <span className="text-xs text-muted-foreground">{opt.description}</span>
+                {/* Active indicator */}
+                {isActive && (
+                  <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary ring-2 ring-background" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ── Main Page ────────────────────────────── */
 const Settings = () => {
   return (
     <div className="space-y-6 max-w-3xl">
       <h1 className="text-2xl font-bold text-foreground font-display tracking-wide">Settings</h1>
+
+      {/* Appearance */}
+      <AppearanceCard />
 
       {/* System Health */}
       <Card className="bg-card border-border">
