@@ -106,12 +106,12 @@ function ServerDialog({ open, onOpenChange, onSubmit, isSubmitting, initial }: S
       return null;
     }
     const cfg = parsed as Record<string, any>;
-    if (cfg.type !== "stdio" && cfg.type !== "http" && cfg.type !== "sse") {
-      setConfigError('"type" must be "stdio", "http", or "sse"');
+    if (cfg.type !== "stdio" && cfg.type !== "local" && cfg.type !== "http" && cfg.type !== "sse") {
+      setConfigError('"type" must be "stdio", "local", "http", or "sse"');
       return null;
     }
-    if (cfg.type === "stdio" && !cfg.command) {
-      setConfigError('"command" is required for stdio servers');
+    if ((cfg.type === "stdio" || cfg.type === "local") && !cfg.command) {
+      setConfigError('"command" is required for stdio and local servers');
       return null;
     }
     if ((cfg.type === "http" || cfg.type === "sse") && !cfg.url) {

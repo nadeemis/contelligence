@@ -536,10 +536,20 @@ class SessionFactory:
             If the check fails.  The exception carries the full
             ``CopilotHealthResult`` for diagnostics.
         """
+        # When a BYOK provider is configured, probe with the exact model name
+        # so routing errors (wrong endpoint, bad tenant, unsupported model) are
+        # caught before any real session is created.
+        # Without a provider, probe with model=None (let the SDK pick its
+        # default) — we're checking connectivity only, not model availability.
+        # Probing with the configured model on the default GitHub Copilot path
+        # can fail if the model routes through Azure AI infrastructure in a
+        # different tenant (e.g. 'claude-opus-4.6' on Windows), preventing
+        # startup even when chat would otherwise work fine.
+        probe_model = self.default_model if self.provider_config else None
         result = await verify_copilot_client(
             self.copilot_client,
             provider_config=self.provider_config,
-            model=self.default_model,
+            model=probe_model,
             full_probe=full_probe,
         )
         self._health = result
@@ -593,10 +603,6 @@ class SessionFactory:
         working_directory:
             Override the factory-level working directory for this session.
         """
-        # Fail fast if preflight check ran and failed
-        if self._health is not None and not self._health.healthy:
-            raise CopilotClientUnhealthyError(self._health)
-
         sid = session_id
 
         if tools_override is not None:

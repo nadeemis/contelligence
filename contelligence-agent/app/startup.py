@@ -381,15 +381,34 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # ------------------------------------------------------------------
     provider_config = None
     if settings.AZURE_OPENAI_ENDPOINT and "your-" not in settings.AZURE_OPENAI_ENDPOINT:
+        azure_section: dict = {"api_version": settings.AZURE_OPENAI_API_VERSION}
+        # If a tenant ID is known, include it so the Copilot CLI / SDK can
+        # request a token scoped to the correct Azure AD tenant.  This prevents
+        # the "token tenant does not match resource tenant" error that occurs on
+        # Windows when DefaultAzureCredential picks up a cached token from a
+        # different Active Directory tenant (e.g. the Microsoft corporate tenant).
+        if settings.AZURE_AD_TENANT_ID:
+            azure_section["tenant_id"] = settings.AZURE_AD_TENANT_ID
+
         provider_config = {
             "type": "azure",
             "base_url": settings.AZURE_OPENAI_ENDPOINT,
-            "azure": {
-                "api_version": settings.AZURE_OPENAI_API_VERSION,
-            },
+            "azure": azure_section,
         }
         if settings.AZURE_OPENAI_KEY:
             provider_config["api_key"] = settings.AZURE_OPENAI_KEY
+        elif platform.system() == "Windows":
+            # On Windows, DefaultAzureCredential may silently pick up a cached
+            # token from the Microsoft corporate tenant instead of the tenant
+            # that owns the Azure OpenAI resource, resulting in a 400 "token
+            # tenant does not match resource tenant" error.  Warn early so the
+            # user can act before reaching the probe step.
+            logger.warning(
+                "BYOK Azure OpenAI is configured without an API key on Windows — "
+                "if the preflight check fails with a tenant-mismatch error, set "
+                "AZURE_OPENAI_KEY or run 'az login --tenant <your-tenant-id>' "
+                "and ensure AZURE_AD_TENANT_ID is set in your .env."
+            )
 
     
     # ------------------------------------------------------------------
@@ -409,21 +428,29 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         skill_directories=skills_manager.get_skill_directories(),
     )
 
-    # Preflight — fail fast if the SDK client can't complete a round-trip
+    # Preflight — auth-only connectivity check.  Purely informational: the
+    # result is cached on session_factory.health for the /health endpoint but
+    # NEVER used to gate session creation.  Real sessions surface their own
+    # errors (wrong model, expired token, org policy) when they are created.
     try:
-        result = await session_factory.verify(full_probe=True)
+        result = await session_factory.verify(full_probe=False)
         if result.healthy:
-            logger.info("Copilot SDK preflight check passed — client is healthy and can create sessions.")
-        else:             
+            logger.info(
+                "Copilot SDK preflight check passed: %s", result.summary()
+            )
+        else:
             logger.warning(
-                f"Copilot SDK preflight check failed: {result.summary()} — "
-                "agent chat will be unavailable until a valid Copilot CLI and token are configured."
+                "Copilot SDK preflight: %s — sessions will be attempted "
+                "anyway and will fail with a specific error if the CLI is "
+                "misconfigured: %s",
+                result.summary(),
+                result.error,
             )
     except Exception as exc:
         logger.warning(
-            f"Copilot SDK preflight check failed — agent chat will be "
-            f"unavailable until a valid Copilot CLI and token are configured: {exc}",
-            exc_info=exc,
+            "Copilot SDK preflight check raised an exception — sessions will "
+            "be attempted anyway: %s",
+            exc,
         )
 
     app.state.session_factory = session_factory

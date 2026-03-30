@@ -63,7 +63,7 @@ export const agentApi = {
   instruct: (
     instruction: string,
     sessionId?: string,
-    options?: { agents?: string[]; skill_ids?: string[] },
+    options?: { agents?: string[]; skill_ids?: string[]; model?: string },
   ) =>
     apiFetch<{ session_id: string }>("/agent/instruct", {
       method: "POST",
