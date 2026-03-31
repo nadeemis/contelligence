@@ -123,7 +123,7 @@ export async function startBackend(copilotCliPath: string): Promise<void> {
   childEnv['API_VERSION'] = 'v1';
   childEnv['API_PORT'] = String(backendPort);
   childEnv['API_HOST'] = '127.0.0.1';
-  childEnv['LOG_LEVEL'] = 'DEBUG';
+  childEnv['LOG_LEVEL'] = 'INFO';
   childEnv['SESSION_TIMEOUT_MINUTES'] = '60';
   childEnv['STORAGE_MODE'] = 'local';
   childEnv['LOCAL_DATA_DIR'] = path.join(home, 'data');
@@ -134,7 +134,6 @@ export async function startBackend(copilotCliPath: string): Promise<void> {
   if (copilotCliPath) {
     childEnv['COPILOT_CLI_PATH'] = copilotCliPath;
   }
-  childEnv['COPILOT_MODEL'] = 'claude-opus-4.6';
 
   // Parse .env file into child env (simple KEY=VALUE, skip comments)
   if (fs.existsSync(envFile)) {
