@@ -5,15 +5,13 @@ declarative slide specification.  Supports built-in themes, custom
 colours, template files, and fine-grained element placement.
 """
 
-from __future__ import annotations
-
 import base64
 import io
 import logging
 import pathlib
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.tool_registry import define_tool
 
@@ -232,7 +230,7 @@ class SlideSpec(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _normalise_content_blocks(self) -> "SlideSpec":
+    def _normalise_content_blocks(self) -> Self:
         """Map ``content_blocks`` into the canonical fields when they are empty.
 
         Also normalises layout aliases (``image+text`` → ``image_left``).
@@ -1514,9 +1512,26 @@ async def create_pptx(params: CreatePptxParams, context: dict | None = None) -> 
             "output_blob_url": destinations.get("blob_path"),
         }
 
+    except ImportError as exc:
+        logger.exception("create_pptx failed — missing dependency")
+        return {
+            "error": f"Missing required dependency: {exc}. Ensure 'python-pptx' is installed (pip install python-pptx).",
+            "filename": params.output_filename or "presentation.pptx",
+        }
+    except FileNotFoundError as exc:
+        logger.exception("create_pptx failed — template not found")
+        return {
+            "error": f"Template file not found: {exc}",
+            "filename": params.output_filename or "presentation.pptx",
+        }
     except Exception as exc:
         logger.exception("create_pptx failed")
         return {
-            "error": str(exc),
+            "error": (
+                f"Failed to create presentation: {type(exc).__name__}: {exc}. "
+                "Check that slide specifications are valid (layouts, content blocks, "
+                "image data, and element positions) and that any template files are "
+                "accessible."
+            ),
             "filename": params.output_filename or "presentation.pptx",
         }

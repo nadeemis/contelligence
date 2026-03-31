@@ -161,7 +161,39 @@ async def verify_copilot_client(
         await asyncio.wait_for(done.wait(), timeout=timeout)
 
         if probe_error:
-            result.error = f"Probe session failed: {probe_error}"
+            # Detect tenant mismatch: a token issued for one Azure AD tenant was
+            # presented to a resource owned by a different tenant.  The message
+            # and fix differ depending on whether a BYOK provider is configured.
+            if "does not match resource tenant" in (probe_error or ""):
+                import re as _re
+                tenant_hint = ""
+                m = _re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", probe_error)
+                if m:
+                    tenant_hint = f" (token is from tenant {m.group(0)})"
+                if provider_config:
+                    # BYOK mode: the Azure OpenAI credential is wrong.
+                    result.error = (
+                        f"Probe session failed: {probe_error}. "
+                        f"TENANT MISMATCH — the credential used to authenticate against the "
+                        f"configured Azure OpenAI endpoint belongs to the wrong Azure AD tenant{tenant_hint}. "
+                        "Fix: set AZURE_OPENAI_KEY in your .env to use API-key auth, or run "
+                        "'az login --tenant <your-tenant-id>' so the correct organisation "
+                        "credential is active, or set AZURE_AD_TENANT_ID in your .env."
+                    )
+                else:
+                    # Default GitHub Copilot path: the model may route through
+                    # Azure AI infrastructure in a tenant the Copilot CLI token
+                    # cannot access.  Most commonly seen on Windows with a
+                    # model name that maps to an Azure-hosted backend.
+                    result.error = (
+                        f"Probe session failed: {probe_error}. "
+                        f"TENANT MISMATCH — the model requested may route through Azure AI "
+                        f"infrastructure that requires a different Azure AD tenant{tenant_hint}. "
+                        "Fix: try a different COPILOT_MODEL (e.g. 'gpt-4o' or 'claude-3.5-sonnet'), "
+                        "or re-authenticate the Copilot CLI with 'gh auth login'."
+                    )
+            else:
+                result.error = f"Probe session failed: {probe_error}"
             return result
 
         result.probe_response = probe_reply
