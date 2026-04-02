@@ -12,10 +12,13 @@ import json
 import logging
 import time
 import uuid
+import webbrowser
 from datetime import datetime, timezone
 from typing import Any
 
 from copilot import CopilotClient, SessionEvent, Tool, ToolInvocation, ToolResult, PermissionHandler, CopilotSession as SDKSession
+from copilot.types import PermissionRequest, PermissionRequestResult
+from copilot.generated.session_events import PermissionRequestKind
 
 from app.core.client_factory import CopilotClientFactory
 from app.core.tool_registry import ToolDefinition, ToolRegistry
@@ -519,6 +522,59 @@ class SessionFactory:
         return self.client_factory.client
 
     # ------------------------------------------------------------------
+    # Permission handler with URL-open support for MCP OAuth
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _make_permission_handler(
+        event_queue: asyncio.Queue[AgentEvent] | None = None,
+        session_id: str = "",
+    ) -> Any:
+        """Return a permission handler that opens auth URLs in the system browser.
+
+        When an MCP server requires OAuth authentication the Copilot CLI
+        sends a ``permission.request`` with ``kind: "url"``.  The default
+        ``PermissionHandler.approve_all`` approves the request but never
+        opens the URL, so the auth flow stalls silently.
+
+        This handler:
+        1. Detects ``kind == "url"`` and opens the URL with ``webbrowser.open``.
+        2. Emits an ``auth_url_opened`` event to the frontend so the UI
+           can surface the link to the user.
+        3. Approves **all** permission kinds (same as ``approve_all``).
+        """
+
+        def handler(
+            request: PermissionRequest,
+            invocation: dict[str, str],
+        ) -> PermissionRequestResult:
+            
+            logger.debug("Permission request received in session %s: kind=%s", session_id, request.kind)
+            
+            if request.kind == PermissionRequestKind.URL:
+                url = request.url or ""
+                if url:
+                    logger.info("MCP auth: opening URL in browser: %s", url)
+                    webbrowser.open(url)
+                    if event_queue is not None:
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.call_soon_threadsafe(
+                                event_queue.put_nowait,
+                                AgentEvent(
+                                    type="auth_url_opened",
+                                    data={"url": url, "kind": "url"},
+                                    session_id=session_id,
+                                ),
+                            )
+                        except RuntimeError:
+                            pass  # no running loop — headless / test context
+            
+            return PermissionRequestResult(kind="approved")
+
+        return handler
+
+    # ------------------------------------------------------------------
     # Preflight health check
     # ------------------------------------------------------------------
 
@@ -614,7 +670,7 @@ class SessionFactory:
         effective_mcp = self.mcp_servers if self.mcp_servers else None
         effective_mcp_servers = None
         if effective_mcp:
-            effective_mcp_servers = mcp_config_to_sdk_config(effective_mcp)
+            effective_mcp_servers = await mcp_config_to_sdk_config(effective_mcp)
 
         # Working directory — session override or factory default
         effective_wd = working_directory or self.working_directory
@@ -626,9 +682,11 @@ class SessionFactory:
         if event_queue is not None:
             session_hooks = self._make_hooks(event_queue, sid)
 
+        permission_handler = self._make_permission_handler(event_queue, sid)
+
         if not resume:
             sdk_session = await self.copilot_client.create_session(
-                                                                    on_permission_request=PermissionHandler.approve_all,
+                                                                    on_permission_request=permission_handler,
                                                                     model=model or self.default_model,
                                                                     session_id=sid,
                                                                     tools=copilot_tools,
@@ -649,7 +707,7 @@ class SessionFactory:
         else:
             sdk_session = await self.copilot_client.resume_session(
                                                                     session_id=session_id,
-                                                                    on_permission_request=PermissionHandler.approve_all,
+                                                                    on_permission_request=permission_handler,
                                                                     model=model or self.default_model,
                                                                     client_name=None, # TODO: support client_name for resumed sessions
                                                                     reasoning_effort=None, # TODO: support reasoning_effort for resumed sessions

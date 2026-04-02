@@ -13,12 +13,57 @@ import logging
 import shutil
 from typing import Any
 
+from app.utils.azure_token_provider import has_token_placeholders, resolve_header_tokens
+
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
+
+# Default probe timeout for most MCP servers (seconds).
+_DEFAULT_PROBE_TIMEOUT: float = 5.0
+
+# Higher timeout for servers that proxy to remote endpoints with auth
+# challenges (e.g. ``agency mcp remote``).  These servers may need to
+# resolve a 401 WWW-Authenticate challenge, fetch protected-resource
+# metadata, and acquire an Entra ID token before returning the first
+# JSON-RPC response.
+_AUTH_PROXY_PROBE_TIMEOUT: float = 30.0
+
+# Command names known to proxy to remote MCP endpoints with auth.
+_AUTH_PROXY_COMMANDS: frozenset[str] = frozenset({"agency"})
+
+
+def _effective_timeout(cfg: dict[str, Any], *, caller_timeout: float) -> float:
+    """Resolve the probe timeout for a single server config.
+
+    Priority (highest → lowest):
+    1. Explicit ``timeout`` field in the server config (milliseconds → seconds).
+    2. Auto-detection: if the command is a known auth-proxy (e.g. ``agency``)
+       *and* its args include ``remote``, use ``_AUTH_PROXY_PROBE_TIMEOUT``.
+    3. The *caller_timeout* passed by the caller (``verify_mcp_servers``).
+    """
+    # 1. Explicit per-server timeout (config value is in milliseconds, like the SDK)
+    explicit = cfg.get("timeout")
+    if explicit is not None:
+        try:
+            return max(float(explicit) / 1000.0, 1.0)
+        except (TypeError, ValueError):
+            pass
+
+    # 2. Auto-detect auth-proxy commands that need extra time
+    command = cfg.get("command", "")
+    cmd_name = command if isinstance(command, str) else (command[0] if isinstance(command, list) and command else "")
+    if cmd_name in _AUTH_PROXY_COMMANDS:
+        args = cfg.get("args", [])
+        if isinstance(args, list) and "remote" in args:
+            return _AUTH_PROXY_PROBE_TIMEOUT
+
+    # 3. Caller-supplied default
+    return caller_timeout
+
 
 async def verify_mcp_servers(
     mcp_config: dict[str, dict[str, Any]],
     *,
-    timeout: float = 5.0,
+    timeout: float = _DEFAULT_PROBE_TIMEOUT,
 ) -> dict[str, dict[str, Any]]:
     """Ping each configured MCP server and report health status.
 
@@ -27,7 +72,10 @@ async def verify_mcp_servers(
     mcp_config:
         The dict returned by ``get_mcp_servers_config()``.
     timeout:
-        Maximum seconds to wait for each server probe.
+        Default maximum seconds to wait for each server probe.
+        Individual servers may override this via a ``timeout`` field
+        in their config (in milliseconds) or via auto-detection of
+        auth-proxy patterns (e.g. ``agency mcp remote``).
 
     Returns
     -------
@@ -40,11 +88,12 @@ async def verify_mcp_servers(
 
     for name, cfg in mcp_config.items():
         mcp_type = cfg.get("type", "unknown")
+        server_timeout = _effective_timeout(cfg, caller_timeout=timeout)
         try:
             if mcp_type in ("stdio", "local"):
-                result = await _check_stdio(cfg, timeout=timeout)
+                result = await _check_stdio(cfg, timeout=server_timeout)
             elif mcp_type in ("http", "sse"):
-                result = await _check_http(cfg, timeout=timeout)
+                result = await _check_http(cfg, timeout=server_timeout)
             else:
                 result = {"status": "unavailable", "detail": f"Unknown transport: {mcp_type}"}
             result["transport"] = mcp_type
@@ -201,11 +250,26 @@ async def _check_http(
             "detail": "Token not resolved — server may be unreachable",
         }
 
+    # Resolve ${token} placeholders in headers from config
+    probe_headers: dict[str, str] = {}
+    cfg_headers = cfg.get("headers")
+    if isinstance(cfg_headers, dict):
+        if has_token_placeholders(cfg_headers):
+            try:
+                probe_headers = await resolve_header_tokens(cfg_headers, "health-check")
+            except Exception as exc:
+                return {
+                    "status": "degraded",
+                    "detail": f"Failed to resolve header token: {exc}",
+                }
+        else:
+            probe_headers = dict(cfg_headers)
+
     try:
         import httpx
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=probe_headers)
             if resp.status_code < 500:
                 return {"status": "ok", "detail": f"HTTP {resp.status_code}"}
             return {"status": "degraded", "detail": f"HTTP {resp.status_code}"}
@@ -278,6 +342,8 @@ async def _list_tools_stdio(
         "params": {},
     })
 
+    logger.debug(f"Starting MCP server '{binary}' for tools/list probe: {' '.join(cmd_parts)}")
+    
     proc: asyncio.subprocess.Process | None = None
     try:
         proc = await asyncio.wait_for(
@@ -371,10 +437,20 @@ async def _list_tools_http(
         raise ValueError("No URL configured")
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
+
+    # Resolve ${token} placeholders in config headers
+    cfg_headers = cfg.get("headers")
+    if isinstance(cfg_headers, dict):
+        resolved = await resolve_header_tokens(cfg_headers, "tool-list")
+        headers.update(resolved)
+
+    # Legacy auth block fallback
     auth = cfg.get("auth", {})
     if auth and auth.get("type") == "token" and auth.get("token"):
         headers["Authorization"] = f"Bearer {auth['token']}"
 
+    logger.debug(f"Sending tools/list probe to MCP server at '{url}' with headers: {headers}")
+    
     async with httpx.AsyncClient(timeout=timeout) as client:
         # 1. Initialize
         init_resp = await client.post(url, headers=headers, json={

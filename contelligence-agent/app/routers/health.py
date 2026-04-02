@@ -21,22 +21,27 @@ router = APIRouter(prefix="/health", tags=["Health"])
 @router.get("")
 async def health_check(request: Request):
     """Health check with optional MCP server status."""
-    mcp_config = getattr(request.app.state, "mcp_config", None)
-    mcp_status: dict | None = None
+    
+    ## Skip checking MCP server status for now since it can cause timeouts \
+    # and we want the health check to be as responsive as possible. We can reintroduce this later with proper timeouts and error handling.
+        
+    # mcp_config = getattr(request.app.state, "mcp_config", None)
+    # mcp_status: dict | None = None
 
-    if mcp_config:
-        from app.mcp.health import verify_mcp_servers
+    # if mcp_config:
+    #     from app.mcp.health import verify_mcp_servers
 
-        mcp_status = await verify_mcp_servers(mcp_config, timeout=3.0)
+    #     mcp_status = await verify_mcp_servers(mcp_config, timeout=3.0)
 
-    # Overall status: degraded if any MCP server is unavailable
+    # # Overall status: degraded if any MCP server is unavailable
+    
+    # if mcp_status:
+    #     for info in mcp_status.values():
+    #         if info.get("status") == "unavailable":
+    #             overall = "degraded"
+    #             break
+    
     overall = "healthy"
-    if mcp_status:
-        for info in mcp_status.values():
-            if info.get("status") == "unavailable":
-                overall = "degraded"
-                break
-
     response: dict = {
         "status": overall,
         "service": "contelligence-agent",
@@ -84,8 +89,8 @@ async def health_check(request: Request):
         response["copilot_cli"] = cli_status
         response["status"] = overall
 
-    if mcp_status is not None:
-        response["mcp_servers"] = mcp_status
+    # if mcp_status is not None:
+    #     response["mcp_servers"] = mcp_status
 
     return response
 
