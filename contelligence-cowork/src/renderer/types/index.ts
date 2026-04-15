@@ -239,6 +239,34 @@ export interface InstructOptions {
   skill_ids?: string[];
 }
 
+export interface UserPreferences {
+  user_id: string;
+  default_model: string | null;
+  default_agent_id: string | null;
+  updated_at?: string;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  capabilities?: {
+    supports?: { vision?: boolean; reasoningEffort?: boolean };
+    limits?: {
+      max_prompt_tokens?: number;
+      max_context_window_tokens?: number;
+      vision?: {
+        supported_media_types?: string[];
+        max_prompt_images?: number;
+        max_prompt_image_size?: number;
+      };
+    };
+  };
+  policy?: { state?: string; terms?: string };
+  billing?: { multiplier?: number };
+  supportedReasoningEfforts?: string[];
+  defaultReasoningEffort?: string;
+}
+
 export interface HealthCheck {
   healthy: boolean;
   detail?: string;

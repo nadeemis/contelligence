@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from copilot import CustomAgentConfig
+from copilot.session import CustomAgentConfig
 
 from app.agents.models import AgentDefinition
 

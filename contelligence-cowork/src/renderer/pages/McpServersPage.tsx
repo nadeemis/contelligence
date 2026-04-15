@@ -344,7 +344,10 @@ export default function McpServersPage() {
       toast.success("Server removed");
       setDeleteTarget(null);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      console.error("Failed to delete server:", err);
+      toast.error(err.message)
+    },
   });
 
   // Toggle disabled
@@ -466,16 +469,23 @@ export default function McpServersPage() {
                           {transport.toUpperCase()}
                         </Badge>
                         {server.config?.source && (
-                          <Badge variant="secondary" className="text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className={`text-[10px] ${
+                              server.config.source === "copilot_shared_config"
+                                ? "bg-purple-200 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                : server.config.source === "contelligence_app_config"
+                                ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                                : ""
+                            }`}
+                          >
                             {server.config.source === "contelligence_app_config"
                               ? "Contelligence"
                               : server.config.source === "copilot_shared_config"
                               ? "Copilot" 
                               : "Unknown"}
                           </Badge>
-                         )
-
-                        }
+                        )}
                         {server.disabled && (
                           <Badge variant="destructive" className="text-[10px]">
                             DISABLED
@@ -531,6 +541,7 @@ export default function McpServersPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => setEditTarget(server)}
+                      disabled={server.config.source === "copilot_shared_config"}
                     >
                       <Pencil className="h-4 w-4 mr-1" />
                       Edit
@@ -564,6 +575,7 @@ export default function McpServersPage() {
                       size="icon"
                       className="text-destructive hover:text-destructive"
                       onClick={() => setDeleteTarget(server)}
+                      disabled={server.config.source === "copilot_shared_config"}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

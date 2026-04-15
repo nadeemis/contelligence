@@ -16,8 +16,8 @@ import webbrowser
 from datetime import datetime, timezone
 from typing import Any
 
-from copilot import CopilotClient, SessionEvent, Tool, ToolInvocation, ToolResult, PermissionHandler, CopilotSession as SDKSession
-from copilot.types import PermissionRequest, PermissionRequestResult
+from copilot import CopilotClient, CopilotSession as SDKSession
+from copilot.session import SessionEvent, Tool, ToolInvocation, ToolResult, PermissionHandler, PermissionRequest, PermissionRequestResult
 from copilot.generated.session_events import PermissionRequestKind
 
 from app.core.client_factory import CopilotClientFactory
@@ -516,6 +516,25 @@ class SessionFactory:
         self.skill_directories: list[str] = skill_directories or []
         self._health: CopilotHealthResult | None = None
 
+    # ------------------------------------------------------------------
+    # MCP config reload
+    # ------------------------------------------------------------------
+
+    def reload_mcp_config(self) -> None:
+        """Re-read MCP server config from disk and update the factory.
+
+        Call this after MCP servers are added, removed, or toggled so
+        that subsequent sessions pick up the latest configuration.
+        """
+        from app.mcp.config import get_mcp_servers_config
+
+        self.mcp_servers = get_mcp_servers_config()
+        logger.info(
+            "Reloaded MCP config — %d server(s): %s",
+            len(self.mcp_servers),
+            ", ".join(self.mcp_servers.keys()) or "(none)",
+        )
+
     @property
     def copilot_client(self) -> CopilotClient:
         """Return the current ``CopilotClient`` from the factory."""
@@ -703,6 +722,7 @@ class SessionFactory:
                                                                     skill_directories=skill_directories,
                                                                     disabled_skills=disabled_skills,
                                                                     infinite_sessions={"enabled": True}, # TODO: support infinite sessions for long-running agents that need to survive restarts
+                                                                    enable_config_discovery=True, # TODO: consider making this configurable and/or supporting explicit config dirs for better control over which tools/agents are available to each session
                                                                 )
         else:
             sdk_session = await self.copilot_client.resume_session(
@@ -727,7 +747,7 @@ class SessionFactory:
                                                                     skill_directories=skill_directories,
                                                                     disabled_skills=disabled_skills,
                                                                     infinite_sessions={"enabled": True}, # TODO: support infinite sessions for long-running agents that need to survive restarts for resumed sessions
-                                                                    disable_resume=False, # TODO: consider allowing resume to be disabled for sessions that should always start fresh, even if an old session with the same ID exists
+                                                                    enable_config_discovery=True, # TODO: consider making this configurable and/or supporting explicit config dirs for better control over which tools/agents are available to each session
                                                                 )
         return CopilotSession(sdk_session, sid)
 

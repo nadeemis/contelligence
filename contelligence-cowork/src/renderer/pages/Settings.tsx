@@ -4,9 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText, Sun, Moon, Laptop } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText, Sun, Moon, Laptop, Cpu } from "lucide-react";
 import { toast } from "sonner";
-import { healthApi, promptsApi } from "@/lib/api";
+import { healthApi, promptsApi, agentApi, preferencesApi } from "@/lib/api";
 import { PromptEditDialog } from "@/components/PromptEditDialog";
 import { useTheme, type Theme } from "@/components/ThemeProvider";
 import type { HealthStatus, EnvironmentInfo, PromptResponse } from "@/types";
@@ -339,6 +341,61 @@ function AppearanceCard() {
   );
 }
 
+/* ── Default Model Panel ───────────────────── */
+
+function DefaultModelPanel() {
+  const queryClient = useQueryClient();
+
+  const { data: preferences, isLoading: prefsLoading } = useQuery({
+    queryKey: ["user-preferences"],
+    queryFn: preferencesApi.get,
+  });
+
+  const { data: availableModels = [], isLoading: modelsLoading } = useQuery({
+    queryKey: ["models"],
+    queryFn: () => agentApi.listModels(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: preferencesApi.update,
+    onSuccess: () => {
+      toast.success("Default model preference saved");
+      queryClient.invalidateQueries({ queryKey: ["user-preferences"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  if (prefsLoading || modelsLoading) {
+    return <Skeleton className="h-10 w-full" />;
+  }
+
+  const effectiveDefault =
+    preferences?.default_model ?? (availableModels.length > 0 ? availableModels[0].id : "");
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-foreground">Default Model</Label>
+      <Select
+        value={effectiveDefault}
+        onValueChange={(v) => updateMutation.mutate({ default_model: v })}
+      >
+        <SelectTrigger className="bg-secondary border-border text-foreground">
+          <SelectValue placeholder="Select default model…" />
+        </SelectTrigger>
+        <SelectContent>
+          {availableModels.map((m) => (
+            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        New sessions will use this model unless overridden.
+      </p>
+    </div>
+  );
+}
+
 /* ── Main Page ────────────────────────────── */
 const Settings = () => {
   return (
@@ -347,6 +404,19 @@ const Settings = () => {
 
       {/* Appearance */}
       <AppearanceCard />
+
+      {/* Default Model */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <Cpu className="h-5 w-5 text-primary" />
+            Default Model
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DefaultModelPanel />
+        </CardContent>
+      </Card>
 
       {/* System Health */}
       <Card className="bg-card border-border">

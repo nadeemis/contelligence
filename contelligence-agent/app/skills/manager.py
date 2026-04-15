@@ -1,14 +1,15 @@
 """Skills Manager — core runtime for Agent Skills.
 
 Handles discovery, loading, caching, prompt injection, and file access.
-Implements the three-level progressive disclosure model:
+The filesystem is the source of truth for all skill content.  Cosmos DB
+stores only lightweight metadata for fast queries and API responses.
 
 - **Level 1 (Metadata)**: ``name`` + ``description`` loaded at startup for
   every installed Skill (~100 tokens each).
-- **Level 2 (Instructions)**: Full ``SKILL.md`` body loaded on demand when
-  the agent decides a Skill is relevant.
+- **Level 2 (Instructions)**: Full ``SKILL.md`` body loaded on demand from
+  the filesystem when the agent decides a Skill is relevant.
 - **Level 3 (Resources)**: ``references/*.md``, ``scripts/*.py``, ``assets/*``
-  loaded only when explicitly referenced from the instructions.
+  loaded from the filesystem when explicitly referenced.
 
 Phase: Skills Integration
 """
@@ -17,26 +18,22 @@ from __future__ import annotations
 
 import asyncio
 import io
-import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from app.connectors.blob_connector import BlobConnectorAdapter
 from app.models.skill_models import (
     CreateSkillRequest,
     SkillRecord,
     SkillSource,
     SkillStatus,
     SkillSummary,
-    SkillValidationResult,
     UpdateSkillRequest,
 )
 from app.settings import AppSettings, get_settings
@@ -47,26 +44,23 @@ from app.skills.validator import validate_skill_frontmatter
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 
 _METADATA_CACHE_TTL = 120  # seconds
-_SKILLS_BLOB_CONTAINER = "skills"
 _BUILT_IN_SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
 
 
 class SkillsManager:
     """Runtime manager for Agent Skills.
 
-    Combines the ``SkillStore`` (Cosmos DB) with ``BlobConnectorAdapter``
-    (Azure Blob Storage) to provide a unified interface for Skill lifecycle
-    operations and runtime loading.
+    The filesystem is the source of truth for all skill content.
+    ``SkillStore`` (Cosmos DB) holds only lightweight metadata for
+    fast queries and API responses.
     """
 
     def __init__(
         self,
         skill_store: SkillStore,
-        blob_connector: BlobConnectorAdapter,
         settings: AppSettings | None = None,
     ) -> None:
         self._store = skill_store
-        self._blob = blob_connector
         self._settings = settings or get_settings()
 
         # Level 1 metadata cache: {skill_id: SkillRecord}
@@ -101,6 +95,26 @@ class SkillsManager:
         if _BUILT_IN_SKILLS_DIR.is_dir():
             return [str(_BUILT_IN_SKILLS_DIR)]
         return []
+
+    # ── Filesystem resolution ─────────────────────────────
+
+    def _resolve_skill_path(self, skill_name: str) -> Path | None:
+        """Find the filesystem directory for a skill.
+
+        Checks the shared skills directory first, then the built-in
+        source tree.  Returns ``None`` if the skill is not found in
+        either location.
+        """
+        shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
+        if shared_dir:
+            skill_path = Path(shared_dir) / skill_name
+            if skill_path.is_dir() and (skill_path / "SKILL.md").exists():
+                return skill_path
+        if _BUILT_IN_SKILLS_DIR.is_dir():
+            skill_path = _BUILT_IN_SKILLS_DIR / skill_name
+            if skill_path.is_dir() and (skill_path / "SKILL.md").exists():
+                return skill_path
+        return None
 
     # ── Shared skills directory (filesystem materialization) ──
 
@@ -150,66 +164,88 @@ class SkillsManager:
             shutil.rmtree(skill_path)
             logger.info("Removed skill '%s' from shared directory.", skill_name)
 
-    async def sync_skills_to_shared_directory(self) -> int:
-        """Materialize all active skills to the shared skills directory.
+    async def discover_filesystem_skills(self) -> int:
+        """Scan the shared skills directory for skills not yet in Cosmos DB.
 
-        Called once at startup to ensure the shared volume (Docker) or
-        local directory (Electron) has a complete snapshot of all skills
-        (built-in + user-created).
+        This picks up skills that were manually added to the skills
+        directory.  Built-in skills (already synced) are skipped.
 
-        Returns the number of skills materialized.
+        Returns the number of newly discovered skills.
         """
         shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
         if not shared_dir:
             return 0
 
-        Path(shared_dir).mkdir(parents=True, exist_ok=True)
+        shared_path = Path(shared_dir)
+        if not shared_path.is_dir():
+            return 0
 
-        records = await self._store.list_skills()
-        synced = 0
-        for record in records:
-            if record.status not in (SkillStatus.ACTIVE, SkillStatus.DRAFT):
+        # Get names of already-known skills
+        known_records = await self._store.list_skills()
+        known_names = {r.name for r in known_records}
+
+        discovered = 0
+        for skill_dir in sorted(shared_path.iterdir()):
+            if not skill_dir.is_dir():
                 continue
-            try:
-                # Prefer blob content, fall back to record.instructions
-                skill_md: str | None = None
-                try:
-                    await self._blob.ensure_initialized()
-                    data = await self._blob.download_blob(
-                        _SKILLS_BLOB_CONTAINER,
-                        f"{record.blob_prefix}SKILL.md",
-                    )
-                    skill_md = data.decode("utf-8")
-                except Exception:
-                    if record.instructions:
-                        # Reconstruct full SKILL.md with frontmatter so
-                        # the materialized file is complete (record.instructions
-                        # only contains the body after the YAML fences).
-                        skill_md = _build_skill_md_from_record(record)
+            skill_md_path = skill_dir / "SKILL.md"
+            if not skill_md_path.exists():
+                continue
+            if skill_dir.name in known_names:
+                continue
 
-                if skill_md:
-                    # Also download extra files for this skill
-                    extra: dict[str, bytes] = {}
-                    for rel in record.files:
-                        if rel == "SKILL.md":
-                            continue
-                        try:
-                            blob_data = await self._blob.download_blob(
-                                _SKILLS_BLOB_CONTAINER,
-                                f"{record.blob_prefix}{rel}",
-                            )
-                            extra[rel] = blob_data
-                        except Exception:
-                            pass
-                    await self._materialize_to_shared(
-                        record.name, skill_md, extra_files=extra or None,
+            try:
+                content = skill_md_path.read_text(encoding="utf-8")
+                result = validate_skill_frontmatter(content)
+                if not result["valid"]:
+                    logger.warning(
+                        f"Discovered skill '{skill_dir.name}' has invalid SKILL.md: "
+                        f"{result['errors']}"
                     )
-                    synced += 1
-            except Exception:
-                logger.warning(
-                    f"Failed to materialize skill '{record.name}' to shared dir."
+                    continue
+
+                fm = result["frontmatter"] or {}
+                skill_name = result["parsed_name"] or skill_dir.name
+
+                if skill_name in known_names:
+                    continue
+
+                files = _collect_skill_files(skill_dir)
+
+                record = SkillRecord(
+                    id=skill_name,
+                    name=skill_name,
+                    description=result["parsed_description"] or "",
+                    license=fm.get("license"),
+                    compatibility=fm.get("compatibility"),
+                    metadata={
+                        str(k): str(v)
+                        for k, v in (fm.get("metadata") or {}).items()
+                        if not isinstance(v, (list, dict))
+                    },
+                    tags=_extract_tags(fm),
+                    source=SkillSource.USER_CREATED,
+                    status=SkillStatus.ACTIVE,
+                    files=files,
+                    bound_to_agents=[],
+                    partition_key="skill",
                 )
-        return synced
+
+                await self._store.create_skill(record)
+                known_names.add(skill_name)
+                discovered += 1
+                logger.info(f"Discovered new skill '{skill_name}' from filesystem.")
+
+            except SkillAlreadyExistsError:
+                pass
+            except Exception:
+                logger.exception(
+                    f"Error discovering skill '{skill_dir.name}'.", exc_info=True,
+                )
+
+        if discovered:
+            self._cache_timestamp = 0.0
+        return discovered
 
     # ── Startup & Built-in Sync ────────────────────────────
 
@@ -219,8 +255,8 @@ class SkillsManager:
         Built-in Skills are shipped inside the container image. This method:
         1. Reads each ``SKILL.md`` in the ``skills/`` directory.
         2. Validates the frontmatter.
-        3. Creates or updates the DB record.
-        4. Uploads Skill files to Blob Storage.
+        3. Creates or updates the metadata record in Cosmos DB.
+        4. Copies skill files to the shared skills directory.
 
         Returns the number of built-in Skills synced.
         """
@@ -252,7 +288,7 @@ class SkillsManager:
                 # Collect file listing
                 files = _collect_skill_files(skill_dir)
 
-                # Build record
+                # Build record (metadata only — no instructions stored in DB)
                 record = SkillRecord(
                     id=skill_name,
                     name=skill_name,
@@ -267,14 +303,12 @@ class SkillsManager:
                     tags=_extract_tags(fm),
                     source=SkillSource.BUILT_IN,
                     status=SkillStatus.ACTIVE,
-                    blob_prefix=f"skills/{skill_name}/",
-                    instructions=result["body"],
                     files=files,
                     bound_to_agents=[],
                     partition_key="skill",
                 )
 
-                # Upsert to Database store (idempotent)
+                # Upsert metadata to Cosmos DB (idempotent)
                 try:
                     await self._store.create_skill(record)
                 except SkillAlreadyExistsError:
@@ -282,7 +316,6 @@ class SkillsManager:
                         skill_name,
                         {
                             "description": record.description,
-                            "instructions": record.instructions,
                             "files": record.files,
                             "metadata": record.metadata,
                             "tags": record.tags,
@@ -292,9 +325,6 @@ class SkillsManager:
                             "status": SkillStatus.ACTIVE.value,
                         },
                     )
-
-                # Upload files to Blob Storage
-                await self._upload_skill_directory(skill_name, skill_dir)
 
                 # Materialize to shared skills directory (so CLI/SDK can discover)
                 try:
@@ -379,39 +409,36 @@ class SkillsManager:
     # ── Level 2: Full Instructions ────────────────────────
 
     async def get_skill_instructions(self, skill_name: str) -> str:
-        """Load the full SKILL.md body for a skill (Level 2).
+        """Load the full SKILL.md body for a skill from the filesystem (Level 2).
 
         Also increments the usage counter.
         """
-        record = await self._store.get_skill(skill_name)
+        await self._store.get_skill(skill_name)
 
         # Increment usage (fire-and-forget)
         asyncio.create_task(self._store.increment_usage(skill_name))
 
-        if record.instructions:
-            return record.instructions
-
-        # Fallback: read from Blob Storage
-        try:
-            await self._blob.ensure_initialized()
-            data = await self._blob.download_blob(
-                _SKILLS_BLOB_CONTAINER,
-                f"{record.blob_prefix}SKILL.md",
+        # Read from filesystem
+        skill_path = self._resolve_skill_path(skill_name)
+        if not skill_path:
+            logger.warning(
+                "Skill '%s' registered in DB but not found on filesystem.", skill_name,
             )
-            content = data.decode("utf-8")
+            return ""
 
-            # Parse body (skip frontmatter)
+        try:
+            content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
             from app.skills.validator import parse_skill_content
             _, body = parse_skill_content(content)
             return body
         except Exception:
-            logger.exception("Failed to load SKILL.md for '%s' from blob.", skill_name)
+            logger.exception("Failed to read SKILL.md for '%s'.", skill_name)
             return ""
 
     # ── Level 3: Skill Files ──────────────────────────────
 
     async def read_skill_file(self, skill_name: str, file_path: str) -> str:
-        """Read a specific file from a skill's directory (Level 3).
+        """Read a specific file from a skill's directory on the filesystem (Level 3).
 
         Validates that the file path is within allowed subdirectories
         (``references/``, ``scripts/``, ``assets/``).
@@ -428,37 +455,30 @@ class SkillsManager:
                 "(references/, scripts/, assets/)."
             )
 
-        record = await self._store.get_skill(skill_name)
-        blob_path = f"{record.blob_prefix}{normalised}"
+        await self._store.get_skill(skill_name)  # verify exists in DB
 
-        try:
-            await self._blob.ensure_initialized()
-            data = await self._blob.download_blob(_SKILLS_BLOB_CONTAINER, blob_path)
-            return data.decode("utf-8")
-        except Exception as exc:
+        skill_path = self._resolve_skill_path(skill_name)
+        if not skill_path:
+            raise FileNotFoundError(
+                f"Skill '{skill_name}' not found on filesystem."
+            )
+
+        target = skill_path / normalised
+        if not target.is_file():
             raise FileNotFoundError(
                 f"File '{file_path}' not found in skill '{skill_name}'."
-            ) from exc
+            )
+        return target.read_text(encoding="utf-8")
 
     async def list_skill_files(self, skill_name: str) -> list[str]:
-        """List all files in a skill's blob directory."""
-        record = await self._store.get_skill(skill_name)
-        if record.files:
-            return record.files
+        """List all files in a skill's filesystem directory."""
+        await self._store.get_skill(skill_name)  # verify exists in DB
 
-        # Fallback: list from Blob Storage
-        try:
-            await self._blob.ensure_initialized()
-            blobs = await self._blob.list_blobs(
-                _SKILLS_BLOB_CONTAINER,
-                prefix=record.blob_prefix,
-                max_results=200,
-            )
-            prefix_len = len(record.blob_prefix)
-            return [b.name[prefix_len:] for b in blobs if b.name != record.blob_prefix]
-        except Exception:
-            logger.exception("Failed to list files for skill '%s'.", skill_name)
+        skill_path = self._resolve_skill_path(skill_name)
+        if not skill_path:
             return []
+
+        return _collect_skill_files(skill_path)
 
     # ── Script Execution ──────────────────────────────────
 
@@ -468,11 +488,7 @@ class SkillsManager:
         script_path: str,
         args: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Execute a Python script bundled with a Skill.
-
-        The script is downloaded from Blob Storage to a temporary directory
-        and executed in a sandboxed subprocess with a 30-second timeout.
-        """
+        """Execute a Python script bundled with a Skill directly from the filesystem."""
         # Validate script path
         normalised = os.path.normpath(script_path)
         if not normalised.startswith("scripts/"):
@@ -480,59 +496,57 @@ class SkillsManager:
         if not normalised.endswith(".py"):
             raise ValueError("Only Python (.py) scripts are supported.")
 
-        record = await self._store.get_skill(skill_name)
-        blob_path = f"{record.blob_prefix}{normalised}"
+        await self._store.get_skill(skill_name)  # verify exists
 
-        # Download script to temp file
-        try:
-            await self._blob.ensure_initialized()
-            script_data = await self._blob.download_blob(_SKILLS_BLOB_CONTAINER, blob_path)
-        except Exception as exc:
+        skill_path = self._resolve_skill_path(skill_name)
+        if not skill_path:
+            raise FileNotFoundError(
+                f"Skill '{skill_name}' not found on filesystem."
+            )
+
+        script_file = skill_path / normalised
+        if not script_file.is_file():
             raise FileNotFoundError(
                 f"Script '{script_path}' not found in skill '{skill_name}'."
-            ) from exc
+            )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            script_file = Path(tmpdir) / Path(normalised).name
-            script_file.write_bytes(script_data)
+        cmd = [sys.executable, str(script_file)] + (args or [])
 
-            cmd = [sys.executable, str(script_file)] + (args or [])
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(skill_path),
+                env={
+                    **os.environ,
+                    "SKILL_NAME": skill_name,
+                    "SKILL_SCRIPT": script_path,
+                },
+            )
+            return {
+                "exit_code": result.returncode,
+                "stdout": result.stdout[:10_000],  # Truncate large output
+                "stderr": result.stderr[:5_000],
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": "Script execution timed out (30s limit).",
+            }
+        except Exception as exc:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Script execution failed: {exc}",
+            }
 
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    cwd=tmpdir,
-                    env={
-                        **os.environ,
-                        "SKILL_NAME": skill_name,
-                        "SKILL_SCRIPT": script_path,
-                    },
-                )
-                return {
-                    "exit_code": result.returncode,
-                    "stdout": result.stdout[:10_000],  # Truncate large output
-                    "stderr": result.stderr[:5_000],
-                }
-            except subprocess.TimeoutExpired:
-                return {
-                    "exit_code": -1,
-                    "stdout": "",
-                    "stderr": "Script execution timed out (30s limit).",
-                }
-            except Exception as exc:
-                return {
-                    "exit_code": -1,
-                    "stdout": "",
-                    "stderr": f"Script execution failed: {exc}",
-                }
-
-    # ── CRUD (delegated to SkillStore with blob management) ──
+    # ── CRUD (filesystem + metadata in Cosmos DB) ──────────
 
     async def create_skill(self, request: CreateSkillRequest) -> SkillRecord:
-        """Create a new skill from an API request."""
+        """Create a new skill: write to filesystem + store metadata in Cosmos."""
         # Build SKILL.md content from request
         skill_md = _build_skill_md(request)
 
@@ -551,28 +565,14 @@ class SkillsManager:
             tags=request.tags or [],
             source=SkillSource.USER_CREATED,
             status=request.status or SkillStatus.DRAFT,
-            blob_prefix=f"skills/{request.name}/",
-            instructions=request.instructions,
             files=["SKILL.md"],
             partition_key="skill",
         )
 
-        # Store in Cosmos
+        # Store metadata in Cosmos
         record = await self._store.create_skill(record)
 
-        # Upload SKILL.md to Blob Storage
-        try:
-            await self._blob.ensure_initialized()
-            await self._blob.upload_blob(
-                _SKILLS_BLOB_CONTAINER,
-                f"skills/{request.name}/SKILL.md",
-                skill_md.encode("utf-8"),
-                content_type="text/markdown",
-            )
-        except Exception:
-            logger.exception("Failed to upload SKILL.md for '%s'.", request.name)
-
-        # Materialize to shared filesystem (Docker volume / local dir)
+        # Write to shared filesystem
         try:
             await self._materialize_to_shared(request.name, skill_md)
         except Exception:
@@ -587,10 +587,10 @@ class SkillsManager:
         skill_id: str,
         request: UpdateSkillRequest,
     ) -> SkillRecord:
-        """Update an existing skill."""
+        """Update an existing skill: write to filesystem + update metadata in Cosmos."""
         updates = request.model_dump(exclude_none=True)
 
-        # If instructions are being updated, rebuild the SKILL.md blob
+        # If instructions are being updated, rebuild the SKILL.md file
         if request.instructions is not None:
             # Get current record for frontmatter fields
             current = await self._store.get_skill(skill_id)
@@ -606,22 +606,14 @@ class SkillsManager:
             )
             skill_md = _build_skill_md(merged_request)
 
-            try:
-                await self._blob.ensure_initialized()
-                await self._blob.upload_blob(
-                    _SKILLS_BLOB_CONTAINER,
-                    f"skills/{current.name}/SKILL.md",
-                    skill_md.encode("utf-8"),
-                    content_type="text/markdown",
-                )
-            except Exception:
-                logger.exception("Failed to update SKILL.md blob for '%s'.", skill_id)
-
-            # Re-materialize to shared filesystem
+            # Write to shared filesystem
             try:
                 await self._materialize_to_shared(current.name, skill_md)
             except Exception:
                 logger.exception("Failed to materialize skill '%s' to shared dir.", skill_id)
+
+        # Remove instructions from DB updates (filesystem is the source of truth)
+        updates.pop("instructions", None)
 
         record = await self._store.update_skill(skill_id, updates)
 
@@ -630,29 +622,13 @@ class SkillsManager:
         return record
 
     async def delete_skill(self, skill_id: str) -> None:
-        """Delete a skill (Cosmos record + blob files)."""
+        """Delete a skill (Cosmos record + filesystem)."""
         record = await self._store.get_skill(skill_id)
 
         if record.source == SkillSource.BUILT_IN:
             raise ValueError("Cannot delete built-in skills. Use 'disable' instead.")
 
         await self._store.delete_skill(skill_id)
-
-        # Best-effort cleanup of blob files
-        try:
-            await self._blob.ensure_initialized()
-            blobs = await self._blob.list_blobs(
-                _SKILLS_BLOB_CONTAINER,
-                prefix=record.blob_prefix,
-                max_results=200,
-            )
-            for blob in blobs:
-                try:
-                    await self._blob.delete_blob(_SKILLS_BLOB_CONTAINER, blob.name)
-                except Exception:
-                    logger.warning("Failed to delete blob '%s'.", blob.name)
-        except Exception:
-            logger.exception("Failed to cleanup blobs for skill '%s'.", skill_id)
 
         # Remove from shared filesystem
         try:
@@ -671,18 +647,21 @@ class SkillsManager:
         relative_path: str,
         data: bytes,
     ) -> None:
-        """Upload a single file to a skill's blob directory and update the record."""
+        """Write a single file to a skill's directory on the filesystem."""
         record = await self._store.get_skill(skill_id)
-        blob_path = f"{record.blob_prefix}{relative_path}"
-        content_type = _guess_content_type(Path(relative_path).suffix)
 
-        await self._blob.ensure_initialized()
-        await self._blob.upload_blob(
-            _SKILLS_BLOB_CONTAINER,
-            blob_path,
-            data,
-            content_type=content_type,
-        )
+        skill_path = self._resolve_skill_path(record.name)
+        if not skill_path:
+            # Fall back to creating the directory in the shared skills dir
+            shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
+            if not shared_dir:
+                raise ValueError("No skills directory configured.")
+            skill_path = Path(shared_dir) / record.name
+            skill_path.mkdir(parents=True, exist_ok=True)
+
+        target = skill_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
 
         # Update the files list in the record
         if relative_path not in record.files:
@@ -696,7 +675,7 @@ class SkillsManager:
         skill_id: str,
         zip_data: bytes,
     ) -> dict[str, Any]:
-        """Extract a zip archive into a skill's blob directory.
+        """Extract a zip archive into a skill's filesystem directory.
 
         Returns ``{"files_added": int, "files": list[str]}``.
         Filters out unsafe paths and only allows files under recognised
@@ -704,7 +683,14 @@ class SkillsManager:
         ``SKILL.md`` at the root.
         """
         record = await self._store.get_skill(skill_id)
-        await self._blob.ensure_initialized()
+
+        skill_path = self._resolve_skill_path(record.name)
+        if not skill_path:
+            shared_dir = self._settings.AGENT_SHARED_SKILLS_DIRECTORY
+            if not shared_dir:
+                raise ValueError("No skills directory configured.")
+            skill_path = Path(shared_dir) / record.name
+            skill_path.mkdir(parents=True, exist_ok=True)
 
         try:
             zf = zipfile.ZipFile(io.BytesIO(zip_data))
@@ -749,58 +735,16 @@ class SkillsManager:
                 logger.warning("Skipping oversized file in zip: '%s' (%d bytes).", normalised, info.file_size)
                 continue
 
-            data = zf.read(info.filename)
-            blob_path = f"{record.blob_prefix}{normalised}"
-            content_type = _guess_content_type(Path(normalised).suffix)
-
-            await self._blob.upload_blob(
-                _SKILLS_BLOB_CONTAINER,
-                blob_path,
-                data,
-                content_type=content_type,
-            )
+            file_data = zf.read(info.filename)
+            target = skill_path / normalised
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(file_data)
             added_files.append(normalised)
 
         # Update the files list in the record
         if added_files:
             updated_files = sorted(set(record.files + added_files))
             await self._store.update_skill(skill_id, {"files": updated_files})
-
-        # Re-materialize to shared filesystem with updated content
-        if added_files:
-            try:
-                skill_md_content: str | None = None
-                try:
-                    md_data = await self._blob.download_blob(
-                        _SKILLS_BLOB_CONTAINER,
-                        f"{record.blob_prefix}SKILL.md",
-                    )
-                    skill_md_content = md_data.decode("utf-8")
-                except Exception:
-                    if record.instructions:
-                        skill_md_content = record.instructions
-
-                if skill_md_content:
-                    extra: dict[str, bytes] = {}
-                    for rel in added_files:
-                        if rel == "SKILL.md":
-                            continue
-                        try:
-                            bd = await self._blob.download_blob(
-                                _SKILLS_BLOB_CONTAINER,
-                                f"{record.blob_prefix}{rel}",
-                            )
-                            extra[rel] = bd
-                        except Exception:
-                            pass
-                    await self._materialize_to_shared(
-                        record.name, skill_md_content, extra_files=extra or None,
-                    )
-            except Exception:
-                logger.exception(
-                    "Failed to materialize zip contents for '%s' to shared dir.",
-                    skill_id,
-                )
 
         self._cache_timestamp = 0.0
         logger.info("Extracted %d files from zip for skill '%s'.", len(added_files), skill_id)
@@ -811,17 +755,22 @@ class SkillsManager:
         skill_id: str,
         relative_path: str,
     ) -> None:
-        """Delete a single file from a skill's blob directory and update the record."""
+        """Delete a single file from a skill's filesystem directory."""
         record = await self._store.get_skill(skill_id)
-        blob_path = f"{record.blob_prefix}{relative_path}"
 
-        try:
-            await self._blob.ensure_initialized()
-            await self._blob.delete_blob(_SKILLS_BLOB_CONTAINER, blob_path)
-        except Exception as exc:
+        skill_path = self._resolve_skill_path(record.name)
+        if not skill_path:
+            raise FileNotFoundError(
+                f"Skill '{skill_id}' not found on filesystem."
+            )
+
+        target = skill_path / relative_path
+        if not target.is_file():
             raise FileNotFoundError(
                 f"File '{relative_path}' not found in skill '{skill_id}'."
-            ) from exc
+            )
+
+        target.unlink()
 
         # Update the files list in the record
         updated_files = [f for f in record.files if f != relative_path]
@@ -878,32 +827,6 @@ class SkillsManager:
             except Exception:
                 logger.exception("Failed to refresh skills metadata cache.")
 
-    
-    async def _upload_skill_directory(self, skill_name: str, local_dir: Path) -> None:
-        """Upload all files from a local skill directory to Blob Storage."""
-        await self._blob.ensure_initialized()
-        await self._blob.ensure_container_exists(_SKILLS_BLOB_CONTAINER)
-
-        for file_path in local_dir.rglob("*"):
-            if file_path.is_file() and not file_path.name.startswith("."):
-                relative = file_path.relative_to(local_dir)
-                blob_path = f"{skill_name}/{relative}"
-                content_type = _guess_content_type(file_path.suffix)
-
-                try:
-                    data = file_path.read_bytes()
-                    await self._blob.upload_blob(
-                        _SKILLS_BLOB_CONTAINER,
-                        blob_path,
-                        data,
-                        content_type=content_type,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to upload '{relative}' for skill '{skill_name}'. Error: {e}"
-                    )
-                    logger.exception(e)
-
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
@@ -957,31 +880,6 @@ def _build_skill_md(request: CreateSkillRequest) -> str:
     return f"---\n{yaml_str}---\n\n{request.instructions}"
 
 
-def _build_skill_md_from_record(record: SkillRecord) -> str:
-    """Reconstruct a full SKILL.md (frontmatter + body) from a SkillRecord.
-
-    Used when blob storage is unavailable and only the parsed
-    ``record.instructions`` (body without frontmatter) is available.
-    """
-    frontmatter: dict[str, Any] = {
-        "name": record.name,
-        "description": record.description,
-    }
-
-    if record.license:
-        frontmatter["license"] = record.license
-    if record.compatibility:
-        frontmatter["compatibility"] = record.compatibility
-    metadata = dict(record.metadata) if record.metadata else {}
-    if record.tags:
-        metadata["tags"] = record.tags
-    if metadata:
-        frontmatter["metadata"] = metadata
-
-    yaml_str = _dump_frontmatter(frontmatter)
-    return f"---\n{yaml_str}---\n\n{record.instructions}"
-
-
 def _dump_frontmatter(frontmatter: dict[str, Any]) -> str:
     """Serialize frontmatter dict to YAML with double-quoted flow-style lists."""
     import yaml
@@ -1009,17 +907,3 @@ def _dump_frontmatter(frontmatter: dict[str, Any]) -> str:
         frontmatter, Dumper=_Dumper, default_flow_style=False,
         allow_unicode=True, sort_keys=False,
     )
-
-
-def _guess_content_type(suffix: str) -> str:
-    """Guess MIME type from file extension."""
-    mapping = {
-        ".md": "text/markdown",
-        ".py": "text/x-python",
-        ".json": "application/json",
-        ".yaml": "application/x-yaml",
-        ".yml": "application/x-yaml",
-        ".txt": "text/plain",
-        ".csv": "text/csv",
-    }
-    return mapping.get(suffix.lower(), "application/octet-stream")

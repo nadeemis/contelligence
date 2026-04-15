@@ -53,6 +53,9 @@ class AppSettings(BaseSettings):
     LARGE_RESULT_THRESHOLD_KB: int = 50           # Tool result size threshold for blob offloading (KB)
     AGENT_OUTPUTS_CONTAINER: str = "agent-outputs"  # Blob container for session outputs
 
+    # Model Fallback
+    DEFAULT_MODEL_FALLBACK_ENABLED: bool = True     # Enable model resolution chain
+
     # Session Quotas
     SESSION_MAX_TOOL_CALLS: int = 200
     SESSION_MAX_DOCUMENTS: int = 100

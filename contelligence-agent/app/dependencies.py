@@ -137,3 +137,8 @@ def get_run_tracker(request: Request):
 def get_skills_manager(request: Request):
     """Return the ``SkillsManager`` singleton (or ``None`` if disabled)."""
     return getattr(request.app.state, "skills_manager", None)
+
+
+def get_preferences_store(request: Request):
+    """Return the ``PreferencesStore`` singleton (or ``None`` if not initialised)."""
+    return getattr(request.app.state, "preferences_store", None)

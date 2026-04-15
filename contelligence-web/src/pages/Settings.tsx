@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle, XCircle, ShieldCheck, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { adminApi } from "@/lib/api";
+import { adminApi, agentApi, preferencesApi } from "@/lib/api";
 import type { HealthCheck } from "@/types";
 
 /* ── System Health Panel ─────────────────── */
@@ -64,14 +64,112 @@ function SystemHealthPanel() {
 }
 
 /* ── Main Page ────────────────────────────── */
-const Settings = () => {
+
+function DefaultModelSettings() {
   const queryClient = useQueryClient();
-  const [newToken, setNewToken] = useState("");
+
+  const { data: preferences, isLoading: prefsLoading } = useQuery({
+    queryKey: ["user-preferences"],
+    queryFn: preferencesApi.get,
+  });
+
+  const { data: availableModels = [], isLoading: modelsLoading } = useQuery({
+    queryKey: ["models"],
+    queryFn: () => agentApi.listModels(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["admin-settings"],
     queryFn: adminApi.getSettings,
   });
+
+  const updatePreferencesMutation = useMutation({
+    mutationFn: preferencesApi.update,
+    onSuccess: () => {
+      toast.success("Default model preference saved");
+      queryClient.invalidateQueries({ queryKey: ["user-preferences"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: adminApi.updateSettings,
+    onSuccess: () => {
+      toast.success("Settings saved");
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const isLoading = prefsLoading || modelsLoading || settingsLoading;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-10 w-32" />
+      </div>
+    );
+  }
+
+  // Determine effective default: user preference → system setting → first model
+  const effectiveDefault =
+    preferences?.default_model ??
+    settings?.default_model ??
+    (availableModels.length > 0 ? availableModels[0].id : "");
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">Default Model</Label>
+        <Select
+          value={effectiveDefault}
+          onValueChange={(v) => updatePreferencesMutation.mutate({ default_model: v })}
+        >
+          <SelectTrigger className="bg-secondary border-border text-foreground">
+            <SelectValue placeholder="Select default model…" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableModels.map((m) => (
+              <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          New sessions will use this model unless overridden.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <Label className="text-muted-foreground">Require Approval for Write Operations</Label>
+        <Switch
+          checked={settings?.require_approval ?? true}
+          onCheckedChange={(v) => updateSettingsMutation.mutate({ require_approval: v })}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">Default Timeout (minutes)</Label>
+        <Input
+          type="number"
+          value={settings?.default_timeout_minutes ?? 60}
+          onChange={(e) =>
+            updateSettingsMutation.mutate({
+              default_timeout_minutes: parseInt(e.target.value) || 60,
+            })
+          }
+          className="bg-secondary border-border text-foreground w-32"
+        />
+      </div>
+    </div>
+  );
+}
+
+const Settings = () => {
+  const queryClient = useQueryClient();
+  const [newToken, setNewToken] = useState("");
 
   const { data: tokenStatus, isLoading: tokenLoading } = useQuery({
     queryKey: ["token-status"],
@@ -96,15 +194,6 @@ const Settings = () => {
       toast.success("Token rotated successfully");
       setNewToken("");
       queryClient.invalidateQueries({ queryKey: ["token-status"] });
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const updateSettingsMutation = useMutation({
-    mutationFn: adminApi.updateSettings,
-    onSuccess: () => {
-      toast.success("Settings saved");
-      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
     },
     onError: (err) => toast.error(err.message),
   });
@@ -210,55 +299,8 @@ const Settings = () => {
         <CardHeader>
           <CardTitle className="text-foreground">Default Agent Settings</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {settingsLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-10 w-32" />
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Default Model</Label>
-                <Select
-                  value={settings?.default_model ?? "gpt-4.1"}
-                  onValueChange={(v) => updateSettingsMutation.mutate({ default_model: v })}
-                >
-                  <SelectTrigger className="bg-secondary border-border text-foreground">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gpt-4.1">gpt-4.1</SelectItem>
-                    <SelectItem value="gpt-4.1-mini">gpt-4.1-mini</SelectItem>
-                    <SelectItem value="gpt-4.1-nano">gpt-4.1-nano</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label className="text-muted-foreground">Require Approval for Write Operations</Label>
-                <Switch
-                  checked={settings?.require_approval ?? true}
-                  onCheckedChange={(v) => updateSettingsMutation.mutate({ require_approval: v })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Default Timeout (minutes)</Label>
-                <Input
-                  type="number"
-                  value={settings?.default_timeout_minutes ?? 60}
-                  onChange={(e) =>
-                    updateSettingsMutation.mutate({
-                      default_timeout_minutes: parseInt(e.target.value) || 60,
-                    })
-                  }
-                  className="bg-secondary border-border text-foreground w-32"
-                />
-              </div>
-            </>
-          )}
+        <CardContent>
+          <DefaultModelSettings />
         </CardContent>
       </Card>
 

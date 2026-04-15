@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app.agents import CUSTOM_AGENTS
@@ -17,13 +18,14 @@ from app.dependencies import (
     get_approval_manager,
     get_blob_connector,
     get_client_factory,
+    get_preferences_store,
     get_session_store,
 )
 from app.models.agent_models import InstructRequest, InstructResponse, ReplyRequest
 from app.models.approval_models import ApprovalResponse
 from app.models.api_models import SessionListItem, SessionLogsResponse, SessionOutputsResponse
 from app.models.exceptions import SessionNotActiveError, SessionNotFoundError
-from app.models.session_models import SessionStatus
+from app.models.session_models import SessionStatus, UserPreferences
 from app.services.persistent_agent_service import PersistentAgentService
 from app.store.session_store import SessionStore
 
@@ -373,6 +375,109 @@ async def list_models(
         }
     except Exception as exc:
         logger.exception("Error listing models")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# GET/PUT /preferences -- user-level default model & agent preferences
+# ---------------------------------------------------------------------------
+
+
+class UpdatePreferencesRequest(BaseModel):
+    """Request body for updating user preferences."""
+
+    default_model: str | None = None
+    default_agent_id: str | None = None
+
+
+@router.get("/preferences")
+async def get_preferences(
+    user: User = Depends(get_current_user),
+    preferences_store=Depends(get_preferences_store),
+) -> dict[str, Any]:
+    """Return the current user's preferences."""
+    if preferences_store is None:
+        raise HTTPException(status_code=503, detail="Preferences store not initialised")
+
+    prefs = await preferences_store.get_preferences(user.oid)
+    if prefs is None:
+        return {"user_id": user.oid, "default_model": None, "default_agent_id": None}
+    return prefs.model_dump(mode="json")
+
+
+@router.put("/preferences")
+async def update_preferences(
+    body: UpdatePreferencesRequest,
+    user: User = Depends(get_current_user),
+    preferences_store=Depends(get_preferences_store),
+) -> dict[str, Any]:
+    """Update the current user's preferences."""
+    if preferences_store is None:
+        raise HTTPException(status_code=503, detail="Preferences store not initialised")
+
+    existing = await preferences_store.get_preferences(user.oid)
+    if existing is None:
+        existing = UserPreferences(id=user.oid, user_id=user.oid)
+
+    if body.default_model is not None:
+        existing.default_model = body.default_model
+    if body.default_agent_id is not None:
+        existing.default_agent_id = body.default_agent_id
+
+    await preferences_store.save_preferences(existing)
+    return existing.model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# PUT /sessions/{session_id}/settings -- mid-session configuration change
+# ---------------------------------------------------------------------------
+
+
+class UpdateSessionSettingsRequest(BaseModel):
+    """Request body for updating session settings (e.g., model switch)."""
+
+    model: str | None = None
+
+
+@router.put("/sessions/{session_id}/settings")
+async def update_session_settings(
+    session_id: str,
+    body: UpdateSessionSettingsRequest,
+    store: SessionStore = Depends(get_session_store),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Update session settings mid-session (e.g., switch model).
+
+    The new model will be applied from the next turn onward.
+    """
+    try:
+        record = await store.get_session(session_id)
+
+        # RBAC: non-admin users can only modify their own sessions
+        if not user.is_admin and record.user_id and record.user_id != user.oid:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to modify this session",
+            )
+
+        changed: dict[str, Any] = {}
+        if body.model is not None:
+            record.model = body.model
+            # Also update the serialized options
+            if record.options is None:
+                record.options = {}
+            record.options["model"] = body.model
+            changed["model"] = body.model
+
+        await store.save_session(record)
+        logger.info("Session %s settings updated: %s", session_id, changed)
+        return {"status": "updated", "session_id": session_id, **changed}
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error updating session settings for %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
 
 

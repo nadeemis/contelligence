@@ -13,7 +13,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from copilot import CopilotClient, PermissionHandler
+from copilot import CopilotClient
+from copilot.session import PermissionHandler
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
 

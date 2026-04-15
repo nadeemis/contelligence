@@ -16,7 +16,7 @@ import { TurnBox } from "@/components/chat/TurnBox";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { useAgentStream } from "@/hooks/useAgentStream";
-import { agentApi } from "@/lib/api";
+import { agentApi, preferencesApi } from "@/lib/api";
 import { processEventsIntoTimeline } from "@/lib/turn-processing";
 import { formatDate, formatDuration, statusIcon } from "@/lib/format";
 import type { ConversationTurn } from "@/types";
@@ -44,12 +44,25 @@ const Chat = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Select first model as default once loaded
+  // ── Fetch user default model preference ──
+  const { data: preferences } = useQuery({
+    queryKey: ["user-preferences"],
+    queryFn: preferencesApi.get,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Select default model: session model → user preference → first available
   useEffect(() => {
     if (!selectedModel && availableModels.length > 0) {
-      setSelectedModel(availableModels[0].id);
+      const sessionModel = session?.model;
+      const preferredModel = preferences?.default_model;
+      const fallback = availableModels[0].id;
+      const target = sessionModel ?? preferredModel ?? fallback;
+      // Ensure selected model exists in available list
+      const valid = availableModels.some((m) => m.id === target);
+      setSelectedModel(valid ? target : fallback);
     }
-  }, [availableModels, selectedModel]);
+  }, [availableModels, selectedModel, preferences, session]);
 
   // Re-enable auto-scroll when a new streaming session starts
   useEffect(() => {
@@ -292,7 +305,13 @@ const Chat = () => {
           <h1 className="text-2xl font-bold text-foreground font-display tracking-wide">Chat</h1>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Model:</span>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
+            <Select value={selectedModel} onValueChange={(v) => {
+              setSelectedModel(v);
+              // Persist mid-session model switch
+              if (sessionId) {
+                agentApi.updateSessionSettings(sessionId, { model: v }).catch(() => {});
+              }
+            }}>
               <SelectTrigger className="h-7 w-[180px] text-xs">
                 <SelectValue placeholder="Select model…" />
               </SelectTrigger>

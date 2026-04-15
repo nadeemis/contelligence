@@ -7,9 +7,9 @@
     "esModuleInterop": true,
     "noImplicitAny": false,
     "sourceMap": true,
-    "baseUrl": ".",
-    "outDir": "dist",
-    "moduleResolution": "node",
+    // "baseUrl": ".",
+    // "outDir": "dist",
+    // "moduleResolution": "node",
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "paths": {

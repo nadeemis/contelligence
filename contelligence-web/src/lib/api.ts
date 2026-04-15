@@ -14,6 +14,7 @@ import type {
   TokenStatus,
   TokenValidationResult,
   HealthCheck,
+  UserPreferences,
   AgentDefinitionRecord,
   AgentSummary,
   CreateAgentRequest,
@@ -46,6 +47,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `API error: ${res.status}`);
+  }
+
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T;
   }
 
   return res.json();
@@ -102,6 +107,24 @@ export const agentApi = {
   listModels: () =>
     apiFetch<{ models: Array<{ id: string; name: string; capabilities?: Record<string, unknown> }> }>("/agent/models")
       .then((r) => r.models),
+
+  updateSessionSettings: (sessionId: string, data: { model?: string }) =>
+    apiFetch<{ status: string; session_id: string; model?: string }>(`/agent/sessions/${sessionId}/settings`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+// ── Preferences API ──────────────────────
+export const preferencesApi = {
+  get: () =>
+    apiFetch<UserPreferences>("/agent/preferences"),
+
+  update: (data: { default_model?: string; default_agent_id?: string }) =>
+    apiFetch<UserPreferences>("/agent/preferences", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 };
 
 // ── Schedule API ─────────────────────────
