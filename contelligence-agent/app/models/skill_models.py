@@ -37,9 +37,8 @@ class SkillRecord(BaseModel):
 
     Each record corresponds to one Skill directory (``SKILL.md`` + optional
     ``references/``, ``scripts/``, ``assets/``).  The actual Skill files live
-    in Azure Blob Storage under ``skills/{name}/``; this record stores parsed
-    metadata for fast queries and the full instructions body for Level 2
-    loading.
+    on the filesystem (shared skills directory); this record stores only
+    parsed metadata for fast queries.
     """
 
     # Identity
@@ -76,18 +75,6 @@ class SkillRecord(BaseModel):
     )
     updated_at: datetime | None = Field(default=None)
     created_by: str | None = Field(default=None, description="User ID of creator")
-
-    # Storage
-    blob_prefix: str = Field(
-        default="",
-        description="Blob storage prefix (e.g., 'skills/invoice-processing/')",
-    )
-
-    # Content — Level 2 instructions (body of SKILL.md, minus frontmatter)
-    instructions: str | None = Field(
-        default=None,
-        description="Full SKILL.md body (Markdown) for Level 2 loading",
-    )
 
     # File listing
     files: list[str] = Field(

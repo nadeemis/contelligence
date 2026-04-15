@@ -341,7 +341,6 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
     skills_manager = SkillsManager(
         skill_store=skill_store,
-        blob_connector=app_storage_connector,
         settings=settings,
     )
     app.state.skills_manager = skills_manager
@@ -349,32 +348,24 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     # Inject skills_manager into tool context so skill tools can use it
     tool_context["skills_manager"] = skills_manager
 
-    logger.info(f"Synchronizing skills... to storage and shared directory {settings.AGENT_SHARED_SKILLS_DIRECTORY or '(not configured)'}")
-    
-    # Ensure the skills blob container exists
-    try:
-        await app_storage_connector.ensure_container_exists("skills")
-    except Exception as e:
-        logger.warning(
-            "Could not ensure 'skills' blob container exists: %s", e,
-        )
+    logger.info(f"Synchronizing skills... to shared directory {settings.AGENT_SHARED_SKILLS_DIRECTORY or '(not configured)'}")
 
-    # Sync built-in skills from local filesystem to Cosmos + Blob
+    # Sync built-in skills from local filesystem to Cosmos metadata + shared dir
     try:
-        logger.debug("Syncing built-in skills to storage...")
+        logger.debug("Syncing built-in skills...")
         count = await skills_manager.sync_built_in_skills()
         if count:
             logger.info("Synced %d built-in skill(s).", count)
     except Exception:
         logger.warning("Built-in skill sync failed — continuing.", exc_info=True)
 
-    # Materialize all active skills to the shared skills directory
+    # Discover any manually-added skills in the shared directory
     try:
-        shared_count = await skills_manager.sync_skills_to_shared_directory()
-        if shared_count:
-            logger.info("Materialized %d skill(s) to shared directory.", shared_count)
+        discovered = await skills_manager.discover_filesystem_skills()
+        if discovered:
+            logger.info("Discovered %d new skill(s) from filesystem.", discovered)
     except Exception:
-        logger.warning("Shared skills sync failed — continuing.", exc_info=True)
+        logger.warning("Filesystem skill discovery failed — continuing.", exc_info=True)
 
     # ------------------------------------------------------------------
     # Build Azure OpenAI provider config (BYOK) if endpoint is configured
@@ -464,6 +455,14 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     app.state.session_store = session_store
 
     # ------------------------------------------------------------------
+    # Preferences store
+    # ------------------------------------------------------------------
+    from app.store.preferences_store import PreferencesStore
+
+    preferences_store = PreferencesStore(storage_manager=app_storage_manager)
+    app.state.preferences_store = preferences_store
+
+    # ------------------------------------------------------------------
     # Ensure agent-outputs blob container exists
     # ------------------------------------------------------------------
     try:
@@ -530,6 +529,8 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
         approval_manager=approval_manager,
         dynamic_registry=dynamic_registry,
         skills_manager=skills_manager,
+        preferences_store=preferences_store,
+        settings=settings,
     )
     app.state.agent_service = agent_service
 

@@ -194,6 +194,8 @@ class PersistentAgentService:
         approval_manager: Any | None = None,
         dynamic_registry: Any | None = None,
         skills_manager: SkillsManager | None = None,
+        preferences_store: Any | None = None,
+        settings: Any | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.store = session_store
@@ -204,6 +206,8 @@ class PersistentAgentService:
         self.approval_manager = approval_manager
         self.dynamic_registry = dynamic_registry
         self.skills_manager = skills_manager
+        self.preferences_store = preferences_store
+        self.settings = settings
 
         # In-memory tracking (same pattern as Phase 1 AgentService)
         self.active_sessions: dict[str, CopilotSession] = {}
@@ -211,6 +215,61 @@ class PersistentAgentService:
         self._event_tees: dict[str, _EventTee] = {}
         self._session_tasks: dict[str, asyncio.Task] = {}
         self._session_options: dict[str, dict[str, Any]] = {}
+
+    # ------------------------------------------------------------------
+    # Model resolution chain
+    # ------------------------------------------------------------------
+
+    async def _resolve_model(
+        self, session_model: str, user_id: str | None,
+    ) -> str:
+        """Resolve the effective model using the fallback chain.
+
+        Resolution order:
+        1. Session-level override (InstructOptions.model) — if non-empty
+        2. User-level default (UserPreferences.default_model) — if set
+        3. System-level default (COPILOT_MODEL env var)
+        4. First available model from list_models()
+        """
+        # 1. Session-level override
+        if session_model:
+            return session_model
+
+        # 2. User-level default
+        if (
+            user_id
+            and self.preferences_store is not None
+            and self.settings
+            and getattr(self.settings, "DEFAULT_MODEL_FALLBACK_ENABLED", True)
+        ):
+            try:
+                prefs = await self.preferences_store.get_preferences(user_id)
+                if prefs and prefs.default_model:
+                    logger.debug(
+                        "Using user-level default model '%s' for user %s",
+                        prefs.default_model, user_id,
+                    )
+                    return prefs.default_model
+            except Exception:
+                logger.debug(
+                    "Failed to read user preferences for %s — falling back",
+                    user_id, exc_info=True,
+                )
+
+        # 3. System-level default (COPILOT_MODEL)
+        if self.settings and getattr(self.settings, "COPILOT_MODEL", ""):
+            return self.settings.COPILOT_MODEL
+
+        # 4. First available model
+        try:
+            client = self.session_factory.client_factory.client
+            models = await client.list_models()
+            if models:
+                return models[0].id
+        except Exception:
+            logger.debug("Failed to list models for fallback", exc_info=True)
+
+        return ""
 
     # ------------------------------------------------------------------
     # System prompt builder — no longer injects agents or skills
@@ -293,13 +352,18 @@ class PersistentAgentService:
         # Build system prompt (no longer includes agents or skills)
         dynamic_prompt = self._build_system_prompt()
 
+        # Resolve the effective model via the fallback chain
+        resolved_model = await self._resolve_model(
+            options.model, metadata.get("user_id"),
+        )
+
         # 1. Persist SessionRecord
         record = SessionRecord(
             id=session_id,
             created_at=now,
             updated_at=now,
             status=SessionStatus.ACTIVE,
-            model=options.model,
+            model=resolved_model,
             instruction=instruction,
             user_id=metadata.get("user_id"),
             schedule_id=metadata.get("schedule_id"),
@@ -337,7 +401,7 @@ class PersistentAgentService:
             sdk_session = await self.session_factory.create_or_resume_session(
                 session_id=session_id,
                 resume=False,
-                model=options.model,
+                model=resolved_model,
                 system_prompt=dynamic_prompt,
                 event_queue=tee,  # type: ignore[arg-type]  # duck-typed
                 custom_agents=sdk_custom_agents or None,
@@ -382,7 +446,7 @@ class PersistentAgentService:
             self._enforce_timeout(session_id, options.timeout_minutes)
         )
 
-        logger.info("Session %s created (model=%s)", session_id, options.model)
+        logger.info("Session %s created (model=%s)", session_id, resolved_model)
         return session_id
 
 
@@ -493,11 +557,16 @@ class PersistentAgentService:
         self.event_queues[session_id] = sse_queue
         self._event_tees[session_id] = tee
 
+        # Resolve model: session override → existing record model → fallback chain
+        resolved_model = await self._resolve_model(
+            options.model or record.model, record.user_id,
+        )
+
         try:
             sdk_session = await self.session_factory.create_or_resume_session(
                 session_id=session_id,
                 resume=True,
-                model=options.model or record.model,
+                model=resolved_model,
                 system_prompt=self.system_prompt,
                 event_queue=tee,  # type: ignore[arg-type]
                 custom_agents=sdk_custom_agents or None,

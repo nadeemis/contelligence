@@ -171,6 +171,13 @@ export interface InstructOptions {
   skill_ids?: string[];
 }
 
+export interface UserPreferences {
+  user_id: string;
+  default_model: string | null;
+  default_agent_id: string | null;
+  updated_at?: string;
+}
+
 export interface HealthCheck {
   healthy: boolean;
   detail?: string;

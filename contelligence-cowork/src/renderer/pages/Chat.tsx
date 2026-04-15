@@ -15,11 +15,12 @@ import { ToolResultCard } from "@/components/chat/ToolResultCard";
 import { TurnBox } from "@/components/chat/TurnBox";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { ModelInfoCard } from "@/components/ModelInfoPopover";
 import { useAgentStream } from "@/hooks/useAgentStream";
-import { agentApi } from "@/lib/api";
+import { agentApi, preferencesApi } from "@/lib/api";
 import { processEventsIntoTimeline } from "@/lib/turn-processing";
 import { formatDate, formatDuration, statusIcon } from "@/lib/format";
-import type { ConversationTurn } from "@/types";
+import type { ConversationTurn, ModelInfo } from "@/types";
 import type { AgentEventUnion } from "@/types/agent-events";
 import { set } from "date-fns";
 import type { SamplePromptCategory } from "@/data/sample-prompts";
@@ -42,6 +43,8 @@ const Chat = () => {
   const [expandedCategories, setExpandedCategories] = useState<Record<number, boolean>>({ 0: true });
   const [draftInput, setDraftInput] = useState("");
   const prevIsStreamingRef = useRef(false);
+  const [modelSelectOpen, setModelSelectOpen] = useState(false);
+  const [hoveredModel, setHoveredModel] = useState<ModelInfo | null>(null);
 
   // ── Load sample prompts from user-editable file via IPC ──
   const [samplePrompts, setSamplePrompts] = useState<SamplePromptCategory[]>([]);
@@ -58,12 +61,13 @@ const Chat = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Select first model as default once loaded
-  useEffect(() => {
-    if (!selectedModel && availableModels.length > 0) {
-      setSelectedModel(availableModels[0].id);
-    }
-  }, [availableModels, selectedModel]);
+  // ── Fetch user default model preference ──
+  const { data: preferences } = useQuery({
+    queryKey: ["user-preferences"],
+    queryFn: preferencesApi.get,
+    staleTime: 5 * 60 * 1000,
+  });
+
 
   // Re-enable auto-scroll when a new streaming session starts
   useEffect(() => {
@@ -90,6 +94,18 @@ const Chat = () => {
     queryFn: () => agentApi.getSessionLogs(urlSessionId!),
     enabled: !!urlSessionId,
   });
+
+  // Select default model: session model → user preference → first available
+  useEffect(() => {
+    if (!selectedModel && availableModels.length > 0) {
+      const sessionModel = session?.model;
+      const preferredModel = preferences?.default_model;
+      const fallback = availableModels[0].id;
+      const target = sessionModel ?? preferredModel ?? fallback;
+      const valid = availableModels.some((m) => m.id === target);
+      setSelectedModel(valid ? target : fallback);
+    }
+  }, [availableModels, selectedModel, preferences, session]);
 
   // Update sessionId if URL changes (e.g. navigating from sessions list)
   useEffect(() => {
@@ -324,18 +340,45 @@ const Chat = () => {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-foreground font-display tracking-wide">Chat</h1>
-          <div className="flex items-center gap-1.5">
+          <div className="relative flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Model:</span>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
+            <Select
+              value={selectedModel}
+              open={modelSelectOpen}
+              onOpenChange={(open) => {
+                setModelSelectOpen(open);
+                if (!open) setHoveredModel(null);
+              }}
+              onValueChange={(v) => {
+                setSelectedModel(v);
+                // Persist mid-session model switch
+                if (sessionId) {
+                  agentApi.updateSessionSettings(sessionId, { model: v }).catch(() => {});
+                }
+              }}
+            >
               <SelectTrigger className="h-7 w-[180px] text-xs">
                 <SelectValue placeholder="Select model…" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                onPointerLeave={() => setHoveredModel(null)}
+              >
                 {availableModels.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  <SelectItem
+                    key={m.id}
+                    value={m.id}
+                    onPointerEnter={() => setHoveredModel(m)}
+                  >
+                    {m.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {modelSelectOpen && hoveredModel && (
+              <div className="absolute left-full top-0 ml-2 z-[60] animate-in fade-in-0 zoom-in-95 duration-100">
+                <ModelInfoCard model={hoveredModel} />
+              </div>
+            )}
           </div>
           <Button
             size="sm"

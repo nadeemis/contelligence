@@ -2,7 +2,7 @@
 import logging
 from typing import Any
 
-from copilot import MCPLocalServerConfig, MCPRemoteServerConfig, MCPServerConfig
+from copilot.session import MCPLocalServerConfig, MCPRemoteServerConfig, MCPServerConfig
 
 from app.utils.azure_token_provider import resolve_header_tokens
 

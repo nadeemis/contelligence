@@ -235,3 +235,22 @@ class SessionEvent(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)  # Event payload
     timestamp: datetime                             # When the event occurred
 
+
+# ---------------------------------------------------------------------------
+# User Preferences (Cosmos container: user-preferences, partition key: /user_id)
+# ---------------------------------------------------------------------------
+
+
+class UserPreferences(BaseModel):
+    """Per-user persistent preferences.
+
+    Stored in the ``user-preferences`` Cosmos container,
+    partitioned by ``/user_id``.
+    """
+
+    id: str                                         # Same as user_id (Cosmos requires 'id')
+    user_id: str                                    # Identity of the user (partition key)
+    default_model: str | None = None                # Preferred default model
+    default_agent_id: str | None = None             # Preferred default agent
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+

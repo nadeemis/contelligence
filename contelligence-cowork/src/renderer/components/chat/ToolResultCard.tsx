@@ -9,8 +9,8 @@ interface ToolResultCardProps {
   result: unknown;
   parameters: Record<string, unknown>;
   timestamp: string;
-  startedAt: string;
-  completedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
   durationMs: number;
   sessionId?: string;
   sequence?: number;

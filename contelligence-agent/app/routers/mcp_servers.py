@@ -86,6 +86,13 @@ def _build_entry(name: str, cfg: dict[str, Any], exclude: list[str]) -> McpServe
     )
 
 
+def _reload_mcp_config(request: Request) -> None:
+    """Tell the session factory to re-read MCP config from disk."""
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is not None:
+        session_factory.reload_mcp_config()
+
+
 # ── Endpoints ──────────────────────────────────────────────────
 
 @router.get("", response_model=list[McpServerEntry])
@@ -100,7 +107,7 @@ async def list_mcp_servers() -> list[McpServerEntry]:
     
     
 @router.post("", response_model=McpServerEntry, status_code=201)
-async def add_mcp_server(body: AddServerRequest) -> McpServerEntry:
+async def add_mcp_server(body: AddServerRequest, request: Request) -> McpServerEntry:
     """Add or update an MCP server in the app config."""
     mcp_type = body.config.get("type", "")
     if mcp_type not in ("stdio", "http", "sse", "local"):
@@ -112,6 +119,7 @@ async def add_mcp_server(body: AddServerRequest) -> McpServerEntry:
 
     try:
         add_server(body.name, body.config)
+        _reload_mcp_config(request)
         return McpServerEntry(
             name=body.name,
             disabled=False,
@@ -123,20 +131,22 @@ async def add_mcp_server(body: AddServerRequest) -> McpServerEntry:
 
 
 @router.delete("/{key}", status_code=204)
-async def delete_mcp_server(key: str) -> None:
+async def delete_mcp_server(key: str, request: Request) -> None:
     """Remove an MCP server from the app config."""
     try:
         remove_server(key)
+        _reload_mcp_config(request)
     except Exception as e:
         logger.error(f"Failed to remove MCP server: {e}")
         raise HTTPException(500, "Failed to remove MCP server")
 
 
 @router.patch("/{key}/disabled", response_model=McpServerEntry)
-async def toggle_mcp_server(key: str, body: SetDisabledRequest) -> McpServerEntry:
+async def toggle_mcp_server(key: str, body: SetDisabledRequest, request: Request) -> McpServerEntry:
     """Enable or disable an MCP server (adds/removes from exclude list)."""
     try:
         set_server_disabled(key, body.disabled)
+        _reload_mcp_config(request)
         # Re-read to return current state.
         servers, exclude, _ = load_file_based_servers()
         cfg = servers.get(key, {})
