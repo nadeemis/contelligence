@@ -125,6 +125,15 @@ class InstructResponse(BaseModel):
 
 
 class ReplyRequest(BaseModel):
-    """Payload sent by the client to continue an active session."""
+    """Payload sent by the client to continue an active session.
+
+    The optional ``mode`` field controls how the message is delivered to
+    an actively processing session:
+
+    - ``"immediate"`` — inject into the current turn (steering).
+    - ``"enqueue"`` — queue for a new turn after the current one finishes.
+    - ``None`` — default reply behaviour (starts a new agent loop).
+    """
 
     message: str
+    mode: Literal["immediate", "enqueue"] | None = None

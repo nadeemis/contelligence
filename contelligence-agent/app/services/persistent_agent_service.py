@@ -634,8 +634,28 @@ class PersistentAgentService:
     # Public API — send reply with persistence
     # ------------------------------------------------------------------
 
-    async def send_reply(self, session_id: str, message: str) -> None:
-        """Persist user reply, update status, and forward to SDK session."""
+    async def send_reply(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        mode: str | None = None,
+    ) -> None:
+        """Persist user reply, update status, and forward to SDK session.
+
+        When ``mode`` is provided and the session is actively processing,
+        the message is routed to the steering / queueing path instead of
+        starting a new agent loop.
+        """
+        # Route steering into the running turn without a new agent loop.
+        if mode == "immediate":
+            return await self.send_steering(session_id, message)
+
+        # Queueing only makes sense when there is an active SDK session to
+        # queue into.  Fall through to the regular reply loop otherwise.
+        if mode == "enqueue" and session_id in self.active_sessions:
+            return await self.send_queued(session_id, message)
+
         sdk_session = self.active_sessions.get(session_id)
         if not sdk_session:
             raise SessionNotFoundError(session_id)
@@ -676,6 +696,70 @@ class PersistentAgentService:
                 )
             )
             self._session_tasks[session_id] = task
+
+    # ------------------------------------------------------------------
+    # Public API — steering / queueing
+    # ------------------------------------------------------------------
+
+    async def send_steering(self, session_id: str, message: str) -> None:
+        """Inject a steering message into an active session's current turn.
+
+        Unlike :meth:`send_reply`, this does NOT create a new agent loop.
+        The message is injected into the SDK's current turn via
+        ``mode="immediate"``.
+        """
+        sdk_session = self.active_sessions.get(session_id)
+        if not sdk_session:
+            raise SessionNotFoundError(session_id)
+
+        # Persist the steering message as a user turn (annotated via metadata).
+        turns = await self.store.get_turns(session_id)
+        next_seq = len(turns)
+        await self.store.save_turn(
+            ConversationTurn(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                sequence=next_seq,
+                timestamp=datetime.now(timezone.utc),
+                role="user",
+                prompt=message,
+                metadata={"mode": "immediate"},
+            )
+        )
+
+        logger.debug(f"Session {session_id}: sending steering message...")
+        # Inject into the running turn — no new agent loop.
+        await sdk_session.send_steering_message(message)
+
+    async def send_queued(self, session_id: str, message: str) -> None:
+        """Queue a message for processing after the current turn completes.
+
+        The SDK manages the FIFO queue internally.  When the current turn
+        finishes the queued message triggers a new turn and the existing
+        event listener captures those events.
+        """
+        sdk_session = self.active_sessions.get(session_id)
+        if not sdk_session:
+            raise SessionNotFoundError(session_id)
+
+        # Persist the queued message.
+        turns = await self.store.get_turns(session_id)
+        next_seq = len(turns)
+        await self.store.save_turn(
+            ConversationTurn(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                sequence=next_seq,
+                timestamp=datetime.now(timezone.utc),
+                role="user",
+                prompt=message,
+                metadata={"mode": "enqueue"},
+            )
+        )
+
+        logger.debug(f"Session {session_id}: queueing message for next turn...")
+        # Queue for the SDK to process after the current turn.
+        await sdk_session.send_queued_message(message)
 
     # ------------------------------------------------------------------
     # Public API — cancel with persistence

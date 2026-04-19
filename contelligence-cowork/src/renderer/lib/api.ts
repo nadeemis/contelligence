@@ -113,11 +113,18 @@ export const agentApi = {
     apiFetch<{ session_id: string; turns: ConversationTurn[] }>(`/agent/sessions/${id}/logs${toQueryString(params)}`)
       .then((r) => r.turns),
 
-  reply: (sessionId: string, message: string) =>
-    apiFetch<void>(`/agent/sessions/${sessionId}/reply`, {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    }),
+  reply: (
+    sessionId: string,
+    message: string,
+    mode?: "immediate" | "enqueue",
+  ) =>
+    apiFetch<{ status: string; mode?: string }>(
+      `/agent/sessions/${sessionId}/reply`,
+      {
+        method: "POST",
+        body: JSON.stringify({ message, mode }),
+      },
+    ),
 
   cancel: (sessionId: string) =>
     apiFetch<void>(`/agent/sessions/${sessionId}/cancel`, {

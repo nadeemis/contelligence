@@ -207,6 +207,9 @@ class ConversationTurn(BaseModel):
     # Tool turns
     tool_call: ToolCallRecord | None = None         # Tool invocation record
 
+    # Arbitrary per-turn metadata (e.g. {"mode": "immediate"} for steering)
+    metadata: dict[str, Any] | None = None
+
 
 # ---------------------------------------------------------------------------
 # Output Artifact (Cosmos container: outputs, partition key: /session_id)

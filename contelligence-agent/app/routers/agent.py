@@ -135,8 +135,12 @@ async def reply_to_session(
             return {"status": "approval_response_submitted", "decision": decision}
 
         # --- Regular reply (Phase 2 behaviour) ---
-        await agent_service.send_reply(session_id=session_id, message=body.message)
-        return {"status": "sent"}
+        await agent_service.send_reply(
+            session_id=session_id,
+            message=body.message,
+            mode=body.mode,
+        )
+        return {"status": "sent", "mode": body.mode or "default"}
     except SessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except SessionNotActiveError as exc:
