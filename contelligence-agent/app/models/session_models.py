@@ -150,6 +150,19 @@ class SessionRecord(BaseModel):
     # Summary of what was accomplished
     summary: str | None = None                      # Agent-generated summary at completion
 
+    # Session management — displayable title (auto-generated or user-set)
+    title: str | None = None                        # Short human-readable label
+    title_source: Literal["auto", "manual"] | None = None  # How the title was set
+
+    # Session management — user-defined tags for categorisation/filtering
+    tags: list[str] = Field(default_factory=list)
+
+    # Session management — pinned sessions float to the top of the list
+    pinned: bool = False
+
+    # Session management — duplication lineage
+    parent_session_id: str | None = None
+
     # Aggregate metrics
     metrics: SessionMetrics = Field(default_factory=SessionMetrics)
 
@@ -206,6 +219,9 @@ class ConversationTurn(BaseModel):
 
     # Tool turns
     tool_call: ToolCallRecord | None = None         # Tool invocation record
+
+    # Arbitrary per-turn metadata (e.g. {"mode": "immediate"} for steering)
+    metadata: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------

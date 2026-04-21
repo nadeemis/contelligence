@@ -74,6 +74,20 @@ class AppSettings(BaseSettings):
     BLOB_ARCHIVE_DAYS: int = 90
     BLOB_DELETE_DAYS: int = 730
 
+    # Session Management — auto-rename (item 1)
+    ENABLE_SESSION_AUTO_RENAME: bool = True
+    SESSION_TITLE_MODEL: str = "gpt-5-mini"
+    SESSION_TITLE_MAX_CHARS: int = 60
+    SESSION_TITLE_TIMEOUT_SECONDS: float = 30.0
+    SESSION_TITLE_MIN_TURNS: int = 1
+
+    # Session Management — tag validation (item 3)
+    SESSION_MAX_TAGS: int = 8
+    SESSION_MAX_TAG_LENGTH: int = 32
+
+    # Session Management — search (item 8)
+    SESSION_SEARCH_MAX_LIMIT: int = 200
+
     # Approval
     APPROVAL_TIMEOUT_SECONDS: int = 300           # 5-minute default timeout
 

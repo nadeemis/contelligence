@@ -167,17 +167,37 @@ const Chat = () => {
     },
   });
 
+  const sendSteer = useMutation({
+    mutationFn: async ({
+      message,
+      mode,
+    }: {
+      message: string;
+      mode: "immediate" | "enqueue";
+    }) => {
+      if (sessionId) {
+        setUserMessages((prev) => [...prev, message]);
+        await agentApi.reply(sessionId, message, mode);
+      }
+    },
+  });
+
   const cancelSession = useMutation({
     mutationFn: async () => {
       if (sessionId) await agentApi.cancel(sessionId);
     },
   });
 
-  const handleSend = (msg: string) => {
-    if (isStreaming && events.some((e) => e.type === "approval_required")) {
+  const handleSend = (msg: string, mode?: "immediate" | "enqueue") => {
+    if (!sessionId || !isStreaming) {
+      // No active session or session is idle → start a new turn via instruct
+      sendInstruction.mutate(msg);
+    } else if (events.some((e) => e.type === "approval_required")) {
+      // Pending approval → use existing approval reply flow
       sendReply.mutate(msg);
     } else {
-      sendInstruction.mutate(msg);
+      // Session is actively processing → steer (default) or queue
+      sendSteer.mutate({ message: msg, mode: mode ?? "immediate" });
     }
   };
 
@@ -607,12 +627,13 @@ const Chat = () => {
         /> */}
         <ChatInput
           onSend={handleSend}
-          disabled={sendInstruction.isPending || sendReply.isPending}
+          disabled={sendInstruction.isPending || sendReply.isPending || sendSteer.isPending}
+          isStreaming={isStreaming}
           externalValue={draftInput}
           onExternalValueConsumed={() => setDraftInput("")}
           placeholder={
             isStreaming
-              ? "Reply to agent..."
+              ? "Steer the agent (Enter) · Queue follow-up (⌘/Ctrl+Enter)..."
               : isSessionFinished
                 ? "Send a follow-up instruction to resume this session..."
                 : "Type your instruction..."

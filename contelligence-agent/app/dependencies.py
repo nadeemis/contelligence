@@ -28,6 +28,18 @@ def get_session_store(request: Request) -> SessionStore:
     return request.app.state.session_store
 
 
+def get_session_manager(request: Request):
+    """Return the ``SessionManager`` singleton."""
+    from app.services.session_manager import SessionManager
+    manager: SessionManager = request.app.state.session_manager
+    return manager
+
+
+def get_session_titler(request: Request):
+    """Return the ``SessionTitler`` singleton (or ``None``)."""
+    return getattr(request.app.state, "session_titler", None)
+
+
 def get_blob_connector(request: Request) -> BlobConnectorAdapter:
     return request.app.state.blob_connector
 

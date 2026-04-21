@@ -209,6 +209,10 @@ class PersistentAgentService:
         self.preferences_store = preferences_store
         self.settings = settings
 
+        # Attached post-init by startup.py (avoids circular import in __init__).
+        # ``SessionTitler`` instance used for auto-renaming completed sessions.
+        self.session_titler: Any | None = None
+
         # In-memory tracking (same pattern as Phase 1 AgentService)
         self.active_sessions: dict[str, CopilotSession] = {}
         self.event_queues: dict[str, asyncio.Queue] = {}
@@ -634,8 +638,28 @@ class PersistentAgentService:
     # Public API — send reply with persistence
     # ------------------------------------------------------------------
 
-    async def send_reply(self, session_id: str, message: str) -> None:
-        """Persist user reply, update status, and forward to SDK session."""
+    async def send_reply(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        mode: str | None = None,
+    ) -> None:
+        """Persist user reply, update status, and forward to SDK session.
+
+        When ``mode`` is provided and the session is actively processing,
+        the message is routed to the steering / queueing path instead of
+        starting a new agent loop.
+        """
+        # Route steering into the running turn without a new agent loop.
+        if mode == "immediate":
+            return await self.send_steering(session_id, message)
+
+        # Queueing only makes sense when there is an active SDK session to
+        # queue into.  Fall through to the regular reply loop otherwise.
+        if mode == "enqueue" and session_id in self.active_sessions:
+            return await self.send_queued(session_id, message)
+
         sdk_session = self.active_sessions.get(session_id)
         if not sdk_session:
             raise SessionNotFoundError(session_id)
@@ -676,6 +700,70 @@ class PersistentAgentService:
                 )
             )
             self._session_tasks[session_id] = task
+
+    # ------------------------------------------------------------------
+    # Public API — steering / queueing
+    # ------------------------------------------------------------------
+
+    async def send_steering(self, session_id: str, message: str) -> None:
+        """Inject a steering message into an active session's current turn.
+
+        Unlike :meth:`send_reply`, this does NOT create a new agent loop.
+        The message is injected into the SDK's current turn via
+        ``mode="immediate"``.
+        """
+        sdk_session = self.active_sessions.get(session_id)
+        if not sdk_session:
+            raise SessionNotFoundError(session_id)
+
+        # Persist the steering message as a user turn (annotated via metadata).
+        turns = await self.store.get_turns(session_id)
+        next_seq = len(turns)
+        await self.store.save_turn(
+            ConversationTurn(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                sequence=next_seq,
+                timestamp=datetime.now(timezone.utc),
+                role="user",
+                prompt=message,
+                metadata={"mode": "immediate"},
+            )
+        )
+
+        logger.debug(f"Session {session_id}: sending steering message...")
+        # Inject into the running turn — no new agent loop.
+        await sdk_session.send_steering_message(message)
+
+    async def send_queued(self, session_id: str, message: str) -> None:
+        """Queue a message for processing after the current turn completes.
+
+        The SDK manages the FIFO queue internally.  When the current turn
+        finishes the queued message triggers a new turn and the existing
+        event listener captures those events.
+        """
+        sdk_session = self.active_sessions.get(session_id)
+        if not sdk_session:
+            raise SessionNotFoundError(session_id)
+
+        # Persist the queued message.
+        turns = await self.store.get_turns(session_id)
+        next_seq = len(turns)
+        await self.store.save_turn(
+            ConversationTurn(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                sequence=next_seq,
+                timestamp=datetime.now(timezone.utc),
+                role="user",
+                prompt=message,
+                metadata={"mode": "enqueue"},
+            )
+        )
+
+        logger.debug(f"Session {session_id}: queueing message for next turn...")
+        # Queue for the SDK to process after the current turn.
+        await sdk_session.send_queued_message(message)
 
     # ------------------------------------------------------------------
     # Public API — cancel with persistence
@@ -1288,9 +1376,51 @@ class PersistentAgentService:
             record.metrics.total_duration_seconds = duration
             record.updated_at = datetime.now(timezone.utc)
             await self.store.save_session(record)
+
+            # Session Management — auto-rename if enabled and title not manually set.
+            self._schedule_auto_rename(record)
         elif session.status == "error":
             await self.store.update_session_status(
                 session_id, SessionStatus.FAILED
+            )
+
+    # ------------------------------------------------------------------
+    # Session Management — auto-rename
+    # ------------------------------------------------------------------
+
+    def _schedule_auto_rename(self, record: SessionRecord) -> None:
+        """Fire-and-forget: generate an auto-title for a completed session."""
+        if self.session_titler is None:
+            return
+        if self.settings is not None and not getattr(
+            self.settings, "ENABLE_SESSION_AUTO_RENAME", True,
+        ):
+            return
+        if record.title_source == "manual":
+            return
+        asyncio.create_task(self._run_auto_rename(record.id))
+
+    async def _run_auto_rename(self, session_id: str) -> None:
+        """Background task: generate title via SessionTitler and persist it."""
+        try:
+            record = await self.store.get_session(session_id)
+            if record.title_source == "manual":
+                return
+            turns = await self.store.get_turns(session_id)
+            title = await self.session_titler.generate_title(
+                record.instruction,
+                turns=turns,
+                summary=record.summary,
+            )
+            if not title:
+                return
+            await self.store.update_session_fields(
+                session_id, title=title, title_source="auto",
+            )
+            logger.info("Auto-renamed session %s: %r", session_id, title)
+        except Exception:  # noqa: BLE001 — never propagate from fire-and-forget
+            logger.warning(
+                "Auto-rename failed for session %s", session_id, exc_info=True,
             )
 
     # ------------------------------------------------------------------

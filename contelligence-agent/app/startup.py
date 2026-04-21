@@ -535,6 +535,33 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
     app.state.agent_service = agent_service
 
     # ------------------------------------------------------------------
+    # Session Management — Titler (uses Copilot SDK), Manager
+    # ------------------------------------------------------------------
+    from app.services.session_manager import SessionManager
+    from app.services.session_titler import SessionTitler
+
+    session_titler = SessionTitler(
+        client_factory=client_factory,
+        settings=settings,
+    )
+    app.state.session_titler = session_titler
+    logger.info(
+        "SessionTitler initialised (auto_rename=%s, model=%s).",
+        settings.ENABLE_SESSION_AUTO_RENAME,
+        settings.SESSION_TITLE_MODEL,
+    )
+
+    session_manager = SessionManager(
+        store=session_store,
+        titler=session_titler,
+        settings=settings,
+    )
+    app.state.session_manager = session_manager
+
+    # Attach titler to agent service for post-completion auto-rename.
+    agent_service.session_titler = session_titler
+
+    # ------------------------------------------------------------------
     # Rate Limiter
     # ------------------------------------------------------------------
     from app.rate_limiting import configure_default_rate_limits

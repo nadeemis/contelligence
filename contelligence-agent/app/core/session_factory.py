@@ -465,7 +465,27 @@ class CopilotSession:
     async def send_message(self, message: str) -> None:
         """Send a follow-up message to the SDK session."""
         self._last_message = ""
-        await self.sdk_session.send({"prompt": message})
+        await self.sdk_session.send(message)
+
+    async def send_steering_message(self, message: str) -> None:
+        """Inject a steering message into the current turn.
+
+        Uses the SDK's ``mode="immediate"`` delivery mode.  The agent sees
+        this message before its next LLM call within the current turn.
+        If the session is idle the SDK promotes it to a new turn
+        automatically.
+        """
+        await self.sdk_session.send(message, mode="immediate")
+        logger.debug(f"Session {self.session_id}: sent steering message...")
+
+    async def send_queued_message(self, message: str) -> None:
+        """Queue a message for processing after the current turn completes.
+
+        Uses the SDK's ``mode="enqueue"`` delivery mode.  The SDK adds the
+        message to its internal FIFO queue; when the current turn finishes
+        the queued message starts a new turn automatically.
+        """
+        await self.sdk_session.send(message, mode="enqueue")
 
     async def close(self) -> None:
         """Destroy the SDK session and mark as completed."""
