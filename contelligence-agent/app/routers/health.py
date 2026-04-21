@@ -13,7 +13,7 @@ from app.utils.instance import get_instance_id
 try:
     __version__ = version("contelligence-agent")
 except PackageNotFoundError:
-    __version__ = "0.0.0-dev"
+    __version__ = "0.1.3"  # default version if not installed as a package
 
 router = APIRouter(prefix="/health", tags=["Health"])
 
