@@ -169,6 +169,11 @@ class MockSessionStore:
         user_id: str | None = None,
         since: datetime | None = None,
         limit: int = 50,
+        *,
+        tags: list[str] | None = None,
+        search: str | None = None,
+        pinned_first: bool = True,
+        parent_session_id: str | None = None,
     ) -> list[SessionRecord]:
         records = list(self.sessions.values())
         if status is not None:
@@ -177,8 +182,55 @@ class MockSessionStore:
             records = [r for r in records if r.user_id == user_id]
         if since is not None:
             records = [r for r in records if r.created_at >= since]
-        records.sort(key=lambda r: r.created_at, reverse=True)
+        if parent_session_id is not None:
+            records = [r for r in records if r.parent_session_id == parent_session_id]
+        if tags:
+            tag_set = {t.lower() for t in tags if t}
+            records = [
+                r for r in records
+                if tag_set.intersection({t.lower() for t in (r.tags or [])})
+            ]
+        if search:
+            q = search.lower()
+            def _match(r: SessionRecord) -> bool:
+                for value in (r.title, r.instruction, r.summary, r.id):
+                    if value and q in value.lower():
+                        return True
+                return False
+            records = [r for r in records if _match(r)]
+
+        if pinned_first:
+            records.sort(
+                key=lambda r: (0 if r.pinned else 1, -(r.created_at.timestamp())),
+            )
+        else:
+            records.sort(key=lambda r: r.created_at, reverse=True)
         return records[:limit]
+
+    async def list_distinct_tags(
+        self,
+        user_id: str | None = None,
+        limit: int = 500,
+    ) -> list[tuple[str, int]]:
+        records = await self.list_sessions(user_id=user_id, limit=limit)
+        counts: dict[str, int] = {}
+        for r in records:
+            for tag in r.tags or []:
+                counts[tag] = counts.get(tag, 0) + 1
+        return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+    async def update_session_fields(
+        self,
+        session_id: str,
+        **fields: Any,
+    ) -> SessionRecord:
+        record = await self.get_session(session_id)
+        for key, value in fields.items():
+            if hasattr(record, key):
+                setattr(record, key, value)
+        record.updated_at = datetime.now(timezone.utc)
+        self.sessions[session_id] = record
+        return record
 
     async def save_turn(self, turn: ConversationTurn) -> None:
         if turn.session_id not in self.turns:

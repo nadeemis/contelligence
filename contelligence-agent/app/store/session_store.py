@@ -124,8 +124,19 @@ class SessionStore:
         user_id: str | None = None,
         since: datetime | None = None,
         limit: int = 50,
+        *,
+        tags: list[str] | None = None,
+        search: str | None = None,
+        pinned_first: bool = True,
+        parent_session_id: str | None = None,
     ) -> list[SessionRecord]:
-        """Cross-partition query with optional filters, newest first."""
+        """Cross-partition query with optional filters, newest first.
+
+        Tag-match (ANY of ``tags``), substring ``search`` (over title /
+        instruction / summary / id), and ``pinned_first`` ordering are
+        applied post-query because the SQLite shim only supports simple
+        Cosmos operators.
+        """
         conditions: list[str] = []
         params: list[dict[str, Any]] = []
 
@@ -138,15 +149,81 @@ class SessionStore:
         if since is not None:
             conditions.append("c.created_at >= @since")
             params.append({"name": "@since", "value": since.isoformat()})
+        if parent_session_id is not None:
+            conditions.append("c.parent_session_id = @parent")
+            params.append({"name": "@parent", "value": parent_session_id})
+
+        # Overfetch so that post-filters (tags, search) still yield ``limit``.
+        needs_post_filter = bool(tags) or bool(search)
+        fetch_limit = max(limit * 3, 100) if needs_post_filter else limit
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"SELECT TOP {limit} * FROM c{where} ORDER BY c.created_at DESC"
+        query = f"SELECT TOP {fetch_limit} * FROM c{where} ORDER BY c.created_at DESC"
 
         items = self.sessions.query_items(
             query=query,
             parameters=params or None,
         )
-        return [SessionRecord.model_validate(item) async for item in items]
+        records = [SessionRecord.model_validate(item) async for item in items]
+
+        # Post-filter: tags (ANY-match) and free-text search.
+        if tags:
+            tag_set = {t.lower() for t in tags if t}
+            records = [
+                r for r in records
+                if tag_set.intersection({t.lower() for t in (r.tags or [])})
+            ]
+
+        if search:
+            q = search.lower()
+            def _match(r: SessionRecord) -> bool:
+                for value in (r.title, r.instruction, r.summary, r.id):
+                    if value and q in value.lower():
+                        return True
+                return False
+            records = [r for r in records if _match(r)]
+
+        if pinned_first:
+            records.sort(
+                key=lambda r: (0 if r.pinned else 1, -(r.created_at.timestamp())),
+            )
+
+        return records[:limit]
+
+    async def list_distinct_tags(
+        self,
+        user_id: str | None = None,
+        limit: int = 500,
+    ) -> list[tuple[str, int]]:
+        """Return distinct tags (and their counts) visible to *user_id*.
+
+        Implemented client-side since Cosmos / SQLite shim lack GROUP BY on
+        array expansion.  Suitable for typical per-user tag clouds.
+        """
+        records = await self.list_sessions(user_id=user_id, limit=limit)
+        counts: dict[str, int] = {}
+        for r in records:
+            for tag in r.tags or []:
+                counts[tag] = counts.get(tag, 0) + 1
+        return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+    async def update_session_fields(
+        self,
+        session_id: str,
+        **fields: Any,
+    ) -> SessionRecord:
+        """Patch arbitrary fields on a session record.
+
+        Only known ``SessionRecord`` attributes are applied; unknown keys
+        are silently ignored.  Always bumps ``updated_at``.
+        """
+        record = await self.get_session(session_id)
+        for key, value in fields.items():
+            if hasattr(record, key):
+                setattr(record, key, value)
+        record.updated_at = datetime.now(timezone.utc)
+        await self.save_session(record)
+        return record
 
     # ------------------------------------------------------------------
     # Conversation container

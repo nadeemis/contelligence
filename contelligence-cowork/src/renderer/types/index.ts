@@ -12,6 +12,17 @@ export interface SessionRecord {
   summary: string | null;
   schedule_id: string | null;
   metrics: SessionMetrics;
+  // Session management — item 1, 3, 5, 6
+  title?: string | null;
+  title_source?: "auto" | "manual" | null;
+  tags?: string[];
+  pinned?: boolean;
+  parent_session_id?: string | null;
+}
+
+export interface SessionTagCount {
+  tag: string;
+  count: number;
 }
 
 export interface SessionMetrics {

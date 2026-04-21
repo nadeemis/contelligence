@@ -36,6 +36,7 @@ import type {
   SkillValidationResult,
   PromptResponse,
   PromptListResponse,
+  SessionTagCount,
 } from "@/types";
 
 // Resolve API base URL: Electron IPC bridge (main process) → Vite env → /api fallback
@@ -103,8 +104,17 @@ export const agentApi = {
       }),
     }),
 
-  getSessions: (params?: { status?: string; limit?: number }) =>
+  getSessions: (params?: {
+    status?: string;
+    limit?: number;
+    tags?: string;
+    search?: string;
+    pinned_first?: boolean;
+  }) =>
     apiFetch<SessionRecord[]>(`/agent/sessions${toQueryString(params)}`),
+
+  getSessionTags: () =>
+    apiFetch<SessionTagCount[]>("/agent/sessions/tags"),
 
   getSession: (id: string) =>
     apiFetch<SessionRecord>(`/agent/sessions/${id}`),
@@ -145,6 +155,46 @@ export const agentApi = {
     apiFetch<{ status: string; session_id: string; model?: string }>(`/agent/sessions/${sessionId}/settings`, {
       method: "PUT",
       body: JSON.stringify(data),
+    }),
+
+  // ── Session management — item 1, 3, 5, 6, 8 ──
+  renameSession: (sessionId: string, data: { auto?: boolean; title?: string }) =>
+    apiFetch<SessionRecord>(`/agent/sessions/${sessionId}/rename`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  setSessionTags: (sessionId: string, tags: string[]) =>
+    apiFetch<SessionRecord>(`/agent/sessions/${sessionId}/tags`, {
+      method: "PUT",
+      body: JSON.stringify({ tags }),
+    }),
+
+  addSessionTags: (sessionId: string, tags: string[]) =>
+    apiFetch<SessionRecord>(`/agent/sessions/${sessionId}/tags`, {
+      method: "POST",
+      body: JSON.stringify({ tags }),
+    }),
+
+  removeSessionTags: (sessionId: string, tags: string[]) =>
+    apiFetch<SessionRecord>(`/agent/sessions/${sessionId}/tags`, {
+      method: "DELETE",
+      body: JSON.stringify({ tags }),
+    }),
+
+  pinSession: (sessionId: string, pinned: boolean) =>
+    apiFetch<SessionRecord>(`/agent/sessions/${sessionId}/pin`, {
+      method: "POST",
+      body: JSON.stringify({ pinned }),
+    }),
+
+  duplicateSession: (
+    sessionId: string,
+    data?: { include_turns?: boolean; new_title?: string },
+  ) =>
+    apiFetch<SessionRecord>(`/agent/sessions/${sessionId}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify(data ?? {}),
     }),
 };
 

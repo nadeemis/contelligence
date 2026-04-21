@@ -32,8 +32,18 @@ SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     partition_key TEXT NOT NULL,
-    data TEXT NOT NULL
+    data TEXT NOT NULL,
+    -- Extracted columns for efficient filtering / sorting on session
+    -- management features (pin, rename, duplicate lineage).
+    title TEXT,
+    pinned INTEGER DEFAULT 0,
+    parent_session_id TEXT
 );
+-- NOTE: Indexes for pinned/parent_session_id are created by
+-- ``_migrate_sessions_table`` after any missing columns have been added
+-- via ALTER TABLE.  Defining them here would fail on upgraded DBs where
+-- the underlying sessions table still lacks those columns (because
+-- CREATE TABLE IF NOT EXISTS is a no-op when the table already exists).
 
 CREATE TABLE IF NOT EXISTS conversation (
     id TEXT PRIMARY KEY,
@@ -135,6 +145,73 @@ def _extract_partition_key(table: str, doc: dict[str, Any]) -> str:
     return str(doc.get(field, doc.get("id", "")))
 
 
+# Session-specific columns that live outside the ``data`` JSON blob so
+# the shim can filter/sort them directly from SQL.
+_SESSION_EXTRACTED_COLUMNS: tuple[str, ...] = (
+    "title",
+    "pinned",
+    "parent_session_id",
+)
+
+
+def _extract_session_columns(doc: dict[str, Any]) -> tuple[Any, int, Any]:
+    """Return (title, pinned_int, parent_session_id) from a session document.
+
+    ``pinned`` is coerced to 0/1 so SQLite can index it.
+    """
+    title = doc.get("title")
+    pinned = 1 if bool(doc.get("pinned")) else 0
+    parent = doc.get("parent_session_id")
+    return title, pinned, parent
+
+
+async def _migrate_sessions_table(db: aiosqlite.Connection) -> None:
+    """Add session-management columns to existing DBs (idempotent).
+
+    ``ALTER TABLE ADD COLUMN`` is safe to run once; this helper queries
+    ``PRAGMA table_info`` first and only adds columns that are missing.
+    Databases created fresh already have these columns via ``SCHEMA_DDL``.
+    """
+    cursor = await db.execute("PRAGMA table_info(sessions)")
+    existing = {row[1] for row in await cursor.fetchall()}
+
+    migrations: list[tuple[str, str]] = [
+        ("title", "ALTER TABLE sessions ADD COLUMN title TEXT"),
+        ("pinned", "ALTER TABLE sessions ADD COLUMN pinned INTEGER DEFAULT 0"),
+        ("parent_session_id", "ALTER TABLE sessions ADD COLUMN parent_session_id TEXT"),
+    ]
+    for column, ddl in migrations:
+        if column not in existing:
+            logger.info("Migrating sessions table: adding column %s", column)
+            await db.execute(ddl)
+
+    # Backfill extracted columns from the JSON blob so existing rows get
+    # indexable values (one-time on first boot after upgrade).
+    await db.execute(
+        """
+        UPDATE sessions
+        SET
+            title = COALESCE(title, json_extract(data, '$.title')),
+            pinned = COALESCE(pinned, CASE
+                WHEN json_extract(data, '$.pinned') IN (1, 'true', true) THEN 1
+                ELSE 0 END),
+            parent_session_id = COALESCE(
+                parent_session_id,
+                json_extract(data, '$.parent_session_id')
+            )
+        WHERE title IS NULL OR parent_session_id IS NULL OR pinned IS NULL
+        """,
+    )
+
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_pinned ON sessions(pinned)",
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_parent "
+        "ON sessions(parent_session_id)",
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQLiteContainerClient — mimics azure.cosmos.aio.ContainerProxy
 # ---------------------------------------------------------------------------
@@ -166,10 +243,19 @@ class SQLiteContainerClient:
 
         db = await self._get_db()
         try:
-            await db.execute(
-                f'INSERT OR REPLACE INTO "{self._table}" (id, partition_key, data) VALUES (?, ?, ?)',
-                (doc_id, pk, data_json),
-            )
+            if self._table == "sessions":
+                title, pinned, parent = _extract_session_columns(body)
+                await db.execute(
+                    'INSERT OR REPLACE INTO "sessions" '
+                    '(id, partition_key, data, title, pinned, parent_session_id) '
+                    'VALUES (?, ?, ?, ?, ?, ?)',
+                    (doc_id, pk, data_json, title, pinned, parent),
+                )
+            else:
+                await db.execute(
+                    f'INSERT OR REPLACE INTO "{self._table}" (id, partition_key, data) VALUES (?, ?, ?)',
+                    (doc_id, pk, data_json),
+                )
             await db.commit()
         finally:
             await db.close()
@@ -198,10 +284,19 @@ class SQLiteContainerClient:
                     message=f"Resource with id '{doc_id}' already exists in {self._table}",
                 )
 
-            await db.execute(
-                f'INSERT INTO "{self._table}" (id, partition_key, data) VALUES (?, ?, ?)',
-                (doc_id, pk, data_json),
-            )
+            if self._table == "sessions":
+                title, pinned, parent = _extract_session_columns(body)
+                await db.execute(
+                    'INSERT INTO "sessions" '
+                    '(id, partition_key, data, title, pinned, parent_session_id) '
+                    'VALUES (?, ?, ?, ?, ?, ?)',
+                    (doc_id, pk, data_json, title, pinned, parent),
+                )
+            else:
+                await db.execute(
+                    f'INSERT INTO "{self._table}" (id, partition_key, data) VALUES (?, ?, ?)',
+                    (doc_id, pk, data_json),
+                )
             await db.commit()
         finally:
             await db.close()
@@ -260,10 +355,19 @@ class SQLiteContainerClient:
                     message=f"Resource '{doc_id}' not found in {self._table}",
                 )
 
-            await db.execute(
-                f'INSERT OR REPLACE INTO "{self._table}" (id, partition_key, data) VALUES (?, ?, ?)',
-                (doc_id, pk, data_json),
-            )
+            if self._table == "sessions":
+                title, pinned, parent = _extract_session_columns(body)
+                await db.execute(
+                    'INSERT OR REPLACE INTO "sessions" '
+                    '(id, partition_key, data, title, pinned, parent_session_id) '
+                    'VALUES (?, ?, ?, ?, ?, ?)',
+                    (doc_id, pk, data_json, title, pinned, parent),
+                )
+            else:
+                await db.execute(
+                    f'INSERT OR REPLACE INTO "{self._table}" (id, partition_key, data) VALUES (?, ?, ?)',
+                    (doc_id, pk, data_json),
+                )
             await db.commit()
         finally:
             await db.close()
@@ -657,6 +761,7 @@ class SQLiteCosmosClient:
         try:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.executescript(SCHEMA_DDL)
+            await _migrate_sessions_table(db)
             await db.commit()
         finally:
             await db.close()

@@ -24,6 +24,11 @@ class SessionListItem(BaseModel):
     model: str
     metrics: SessionMetrics
     summary: str | None = None
+    title: str | None = None
+    title_source: str | None = None
+    tags: list[str] = []
+    pinned: bool = False
+    parent_session_id: str | None = None
 
 
 class SessionLogsResponse(BaseModel):

@@ -209,6 +209,10 @@ class PersistentAgentService:
         self.preferences_store = preferences_store
         self.settings = settings
 
+        # Attached post-init by startup.py (avoids circular import in __init__).
+        # ``SessionTitler`` instance used for auto-renaming completed sessions.
+        self.session_titler: Any | None = None
+
         # In-memory tracking (same pattern as Phase 1 AgentService)
         self.active_sessions: dict[str, CopilotSession] = {}
         self.event_queues: dict[str, asyncio.Queue] = {}
@@ -1372,9 +1376,51 @@ class PersistentAgentService:
             record.metrics.total_duration_seconds = duration
             record.updated_at = datetime.now(timezone.utc)
             await self.store.save_session(record)
+
+            # Session Management — auto-rename if enabled and title not manually set.
+            self._schedule_auto_rename(record)
         elif session.status == "error":
             await self.store.update_session_status(
                 session_id, SessionStatus.FAILED
+            )
+
+    # ------------------------------------------------------------------
+    # Session Management — auto-rename
+    # ------------------------------------------------------------------
+
+    def _schedule_auto_rename(self, record: SessionRecord) -> None:
+        """Fire-and-forget: generate an auto-title for a completed session."""
+        if self.session_titler is None:
+            return
+        if self.settings is not None and not getattr(
+            self.settings, "ENABLE_SESSION_AUTO_RENAME", True,
+        ):
+            return
+        if record.title_source == "manual":
+            return
+        asyncio.create_task(self._run_auto_rename(record.id))
+
+    async def _run_auto_rename(self, session_id: str) -> None:
+        """Background task: generate title via SessionTitler and persist it."""
+        try:
+            record = await self.store.get_session(session_id)
+            if record.title_source == "manual":
+                return
+            turns = await self.store.get_turns(session_id)
+            title = await self.session_titler.generate_title(
+                record.instruction,
+                turns=turns,
+                summary=record.summary,
+            )
+            if not title:
+                return
+            await self.store.update_session_fields(
+                session_id, title=title, title_source="auto",
+            )
+            logger.info("Auto-renamed session %s: %r", session_id, title)
+        except Exception:  # noqa: BLE001 — never propagate from fire-and-forget
+            logger.warning(
+                "Auto-rename failed for session %s", session_id, exc_info=True,
             )
 
     # ------------------------------------------------------------------

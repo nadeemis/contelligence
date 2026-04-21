@@ -19,6 +19,7 @@ from app.dependencies import (
     get_blob_connector,
     get_client_factory,
     get_preferences_store,
+    get_session_manager,
     get_session_store,
 )
 from app.models.agent_models import InstructRequest, InstructResponse, ReplyRequest
@@ -264,6 +265,9 @@ async def list_sessions(
     user_id: str | None = Query(None, description="Filter by user ID"),
     since: datetime | None = Query(None, description="Only sessions created after this ISO timestamp"),
     limit: int = Query(50, ge=1, le=200, description="Max results to return"),
+    tags: str | None = Query(None, description="Comma-separated tag filter (ANY match)"),
+    search: str | None = Query(None, description="Substring match on title/instruction/summary/id"),
+    pinned_first: bool = Query(True, description="Float pinned sessions to the top"),
     store: SessionStore = Depends(get_session_store),
     user: User = Depends(get_current_user),
 ) -> list[SessionListItem]:
@@ -277,11 +281,20 @@ async def list_sessions(
         if user is not None and not user.is_admin:
             effective_user_id = user.oid
 
+        tag_list: list[str] | None = None
+        if tags:
+            tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()]
+            if not tag_list:
+                tag_list = None
+
         records = await store.list_sessions(
             status=status,
             user_id=effective_user_id,
             since=since,
             limit=limit,
+            tags=tag_list,
+            search=search,
+            pinned_first=pinned_first,
         )
         return [
             SessionListItem(
@@ -292,12 +305,35 @@ async def list_sessions(
                 model=r.model,
                 metrics=r.metrics,
                 summary=r.summary,
+                title=r.title,
+                title_source=r.title_source,
+                tags=r.tags,
+                pinned=r.pinned,
+                parent_session_id=r.parent_session_id,
             )
             for r in records
         ]
     except Exception as exc:
         logger.exception("Unexpected error listing sessions")
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# GET /sessions/tags -- distinct tags with counts (item 3)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions/tags")
+async def list_session_tags(
+    store: SessionStore = Depends(get_session_store),
+    user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Return distinct tags (and usage counts) visible to the current user."""
+    effective_user_id = None
+    if user is not None and not user.is_admin:
+        effective_user_id = user.oid
+    pairs = await store.list_distinct_tags(user_id=effective_user_id)
+    return [{"tag": tag, "count": count} for tag, count in pairs]
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +518,174 @@ async def update_session_settings(
         raise
     except Exception as exc:
         logger.exception("Error updating session settings for %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Session Management — rename / tags / pin / duplicate (items 1, 3, 5, 6)
+# ---------------------------------------------------------------------------
+
+
+class RenameSessionRequest(BaseModel):
+    """Request body for ``POST /sessions/{id}/rename``."""
+
+    auto: bool = False
+    title: str | None = None
+
+
+class SetTagsRequest(BaseModel):
+    """Request body for ``PUT /sessions/{id}/tags``."""
+
+    tags: list[str]
+
+
+class ModifyTagsRequest(BaseModel):
+    """Request body for tag add/remove endpoints."""
+
+    tags: list[str]
+
+
+class PinSessionRequest(BaseModel):
+    """Request body for ``POST /sessions/{id}/pin``."""
+
+    pinned: bool
+
+
+class DuplicateSessionRequest(BaseModel):
+    """Request body for ``POST /sessions/{id}/duplicate``."""
+
+    include_turns: bool = False
+    new_title: str | None = None
+
+
+def _record_to_dict(record) -> dict[str, Any]:
+    return record.model_dump(mode="json")
+
+
+@router.post("/sessions/{session_id}/rename")
+async def rename_session(
+    session_id: str,
+    body: RenameSessionRequest,
+    manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Rename a session (auto via LLM or manual)."""
+    try:
+        record = await manager.rename(
+            session_id, title=body.title, auto=body.auto, user=user,
+        )
+        return _record_to_dict(record)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error renaming session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.put("/sessions/{session_id}/tags")
+async def set_session_tags(
+    session_id: str,
+    body: SetTagsRequest,
+    manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Replace the full tag list on a session."""
+    try:
+        record = await manager.set_tags(session_id, body.tags, user=user)
+        return _record_to_dict(record)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error setting tags on session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/sessions/{session_id}/tags")
+async def add_session_tags(
+    session_id: str,
+    body: ModifyTagsRequest,
+    manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Add tags to a session (idempotent)."""
+    try:
+        record = await manager.add_tags(session_id, body.tags, user=user)
+        return _record_to_dict(record)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error adding tags on session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/sessions/{session_id}/tags")
+async def remove_session_tags(
+    session_id: str,
+    body: ModifyTagsRequest,
+    manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Remove tags from a session (idempotent)."""
+    try:
+        record = await manager.remove_tags(session_id, body.tags, user=user)
+        return _record_to_dict(record)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error removing tags on session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/sessions/{session_id}/pin")
+async def pin_session(
+    session_id: str,
+    body: PinSessionRequest,
+    manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Pin or unpin a session (pinned sessions float to the top of the list)."""
+    try:
+        record = await manager.set_pinned(session_id, body.pinned, user=user)
+        return _record_to_dict(record)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error pinning session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/sessions/{session_id}/duplicate")
+async def duplicate_session(
+    session_id: str,
+    body: DuplicateSessionRequest,
+    manager=Depends(get_session_manager),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Create a copy of a session.  The copy starts in ``completed`` state."""
+    try:
+        record = await manager.duplicate(
+            session_id,
+            include_turns=body.include_turns,
+            new_title=body.new_title,
+            user=user,
+        )
+        return _record_to_dict(record)
+    except SessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error duplicating session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
 
 
