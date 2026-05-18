@@ -9,6 +9,13 @@ interface ChatInputProps {
   placeholder?: string;
   externalValue?: string;
   onExternalValueConsumed?: () => void;
+  onValueChange?: (value: string) => void;
+  onNavigateUp?: (currentInput: string) => string | null;
+  onNavigateDown?: () => string | null;
+  onCancelNavigation?: () => string;
+  isBrowsingHistory?: boolean;
+  browsingPosition?: { current: number; total: number } | null;
+  bottomLeftSlot?: React.ReactNode;
 }
 
 export function ChatInput({
@@ -18,8 +25,20 @@ export function ChatInput({
   placeholder = "Type your instruction...",
   externalValue,
   onExternalValueConsumed,
+  onValueChange,
+  onNavigateUp,
+  onNavigateDown,
+  onCancelNavigation,
+  isBrowsingHistory = false,
+  browsingPosition,
+  bottomLeftSlot,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+
+  // Notify parent of value changes for draft persistence
+  useEffect(() => {
+    onValueChange?.(value);
+  }, [value, onValueChange]);
 
   // Accept value pushed in from parent (e.g. sample prompt click)
   useEffect(() => {
@@ -52,6 +71,38 @@ export function ChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // History navigation: ArrowUp
+      if (e.key === "ArrowUp" && onNavigateUp) {
+        const el = textareaRef.current;
+        // Only trigger if cursor is at start or input is empty
+        if (el && (value === "" || el.selectionStart === 0)) {
+          e.preventDefault();
+          const result = onNavigateUp(value);
+          if (result !== null) setValue(result);
+        }
+        return;
+      }
+
+      // History navigation: ArrowDown
+      if (e.key === "ArrowDown" && onNavigateDown && isBrowsingHistory) {
+        const el = textareaRef.current;
+        // Only trigger if cursor is at end or input is single line
+        if (el && (el.selectionStart === value.length || !value.includes("\n"))) {
+          e.preventDefault();
+          const result = onNavigateDown();
+          if (result !== null) setValue(result);
+        }
+        return;
+      }
+
+      // History navigation: Escape to cancel
+      if (e.key === "Escape" && onCancelNavigation && isBrowsingHistory) {
+        e.preventDefault();
+        const result = onCancelNavigation();
+        setValue(result);
+        return;
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         if (isStreaming && (e.metaKey || e.ctrlKey)) {
@@ -66,7 +117,7 @@ export function ChatInput({
         }
       }
     },
-    [send, isStreaming],
+    [send, isStreaming, value, onNavigateUp, onNavigateDown, onCancelNavigation, isBrowsingHistory],
   );
 
   return (
@@ -112,13 +163,25 @@ export function ChatInput({
           </Button>
         )}
       </div>
-      {isStreaming && (
-        <div className="text-[10px] text-muted-foreground px-1">
-          <kbd className="px-1 py-0.5 rounded bg-secondary">Enter</kbd> steer ·{" "}
-          <kbd className="px-1 py-0.5 rounded bg-secondary">⌘/Ctrl+Enter</kbd> queue ·{" "}
-          <kbd className="px-1 py-0.5 rounded bg-secondary">Shift+Enter</kbd> newline
-        </div>
-      )}
+      <div className="flex items-center min-h-[1.25rem] gap-2">
+        {bottomLeftSlot}
+        {isBrowsingHistory && browsingPosition ? (
+          <div className="text-[10px] text-muted-foreground px-1">
+            <kbd className="px-1 py-0.5 rounded bg-secondary">↑↓</kbd> history · {browsingPosition.current}/{browsingPosition.total} ·{" "}
+            <kbd className="px-1 py-0.5 rounded bg-secondary">Esc</kbd> cancel
+          </div>
+        ) : isStreaming ? (
+          <div className="text-[10px] text-muted-foreground px-1">
+            <kbd className="px-1 py-0.5 rounded bg-secondary">Enter</kbd> steer ·{" "}
+            <kbd className="px-1 py-0.5 rounded bg-secondary">⌘/Ctrl+Enter</kbd> queue ·{" "}
+            <kbd className="px-1 py-0.5 rounded bg-secondary">Shift+Enter</kbd> newline
+          </div>
+        ) : (
+          <div className="text-[10px] text-muted-foreground px-1 invisible">
+            <kbd className="px-1 py-0.5 rounded bg-secondary">↑↓</kbd> history
+          </div>
+        )}
+      </div>
     </div>
   );
 }

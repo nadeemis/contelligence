@@ -259,23 +259,49 @@ export interface UserPreferences {
 
 export interface ModelInfo {
   id: string;
-  name: string;
-  capabilities?: {
-    supports?: { vision?: boolean; reasoningEffort?: boolean };
-    limits?: {
-      max_prompt_tokens?: number;
-      max_context_window_tokens?: number;
-      vision?: {
-        supported_media_types?: string[];
-        max_prompt_images?: number;
-        max_prompt_image_size?: number;
+    name: string;
+    capabilities?: {
+      family?: string;
+      limits?: {
+        max_context_window_tokens?: number;
+        max_non_streaming_output_tokens?: number;
+        max_output_tokens?: number;
+        max_prompt_tokens?: number;
+        vision?: {
+          max_prompt_image_size?: number;
+          max_prompt_images?: number;
+          supported_media_types?: string[];
+        };
+      };
+      object?: string;
+      supports?: {
+        adaptive_thinking?: boolean;
+        max_thinking_budget?: number;
+        min_thinking_budget?: number;
+        parallel_tool_calls?: boolean;
+        reasoning_effort?: string[];
+        streaming?: boolean;
+        structured_outputs?: boolean;
+        tool_calls?: boolean;
+        vision?: boolean;
+        reasoningEffort?: boolean;
+      };
+      tokenizer?: string;
+      type?: string;
+    };
+    policy?: { state?: string; terms?: string };
+    billing?: {
+      tokenPrices?: {
+        inputPrice?: number;
+        outputPrice?: number;
+        cachePrice?: number;
+        batchSize?: number;
       };
     };
-  };
-  policy?: { state?: string; terms?: string };
-  billing?: { multiplier?: number };
-  supportedReasoningEfforts?: string[];
-  defaultReasoningEffort?: string;
+    supportedReasoningEfforts?: string[];
+    defaultReasoningEffort?: string;
+    modelPickerCategory?: string;
+    modelPickerPriceCategory?: string;
 }
 
 export interface HealthCheck {
@@ -293,6 +319,7 @@ export interface CopilotCliHealth {
   status: string;
   auth_type?: string;
   cli_version?: string;
+  cli_config?: Record<string, any>;
 }
 
 export interface HealthStatus {

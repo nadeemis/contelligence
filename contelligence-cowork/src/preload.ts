@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type { UpdateStatus } from './updater';
+
 /**
  * Preload script — exposes a safe, typed API from the main process
  * to the renderer via contextBridge. No Node.js APIs leak into the
@@ -62,4 +64,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-sample-prompts'),
   openSamplePromptsEditor: (): Promise<void> =>
     ipcRenderer.invoke('open-sample-prompts-editor'),
+
+  // Input history (cross-session persistence)
+  getInputHistory: (): Promise<{ version: number; entries: Array<{ id: string; text: string; sessionId: string; timestamp: number }> }> =>
+    ipcRenderer.invoke('get-input-history'),
+  saveInputHistory: (store: { version: number; entries: Array<{ id: string; text: string; sessionId: string; timestamp: number }> }): Promise<void> =>
+    ipcRenderer.invoke('save-input-history', store),
+  clearInputHistory: (): Promise<void> =>
+    ipcRenderer.invoke('clear-input-history'),
+
+  // Update checker (GitHub Releases)
+  update: {
+    getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:get-status'),
+    checkNow: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check-now'),
+    openRelease: (): Promise<void> => ipcRenderer.invoke('update:open-release'),
+    openDownloads: (): Promise<void> => ipcRenderer.invoke('update:open-downloads'),
+    onStatusChanged: (callback: (status: UpdateStatus) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) =>
+        callback(status);
+      ipcRenderer.on('update:status', handler);
+      return () => ipcRenderer.removeListener('update:status', handler);
+    },
+  },
 });

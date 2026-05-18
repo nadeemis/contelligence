@@ -68,6 +68,7 @@ async def health_check(request: Request):
             auth = await client.get_auth_status()
             cli_status["status"] = "available" if auth.isAuthenticated else "unauthenticated"
             cli_status["auth_type"] = auth.authType
+            cli_status["cli_config"] = client._config if hasattr(client, "_config") else {}
             try:
                 status = await client.get_status()
                 cli_status["cli_version"] = status.version

@@ -2,7 +2,7 @@
 import logging
 from typing import Any
 
-from copilot.session import MCPLocalServerConfig, MCPRemoteServerConfig, MCPServerConfig
+from copilot.session import MCPServerConfig, MCPStdioServerConfig, MCPHTTPServerConfig
 
 from app.utils.azure_token_provider import resolve_header_tokens
 
@@ -76,14 +76,14 @@ async def mcp_config_to_sdk_config(
                 )
 
             # Strip non-SDK keys before constructing the typed config.
-            # MCPLocalServerConfig only accepts: tools, type, timeout,
+            # MCPStdioServerConfig only accepts: tools, type, timeout,
             # command, args, env, cwd.
             sdk_keys = {"tools", "type", "timeout", "command", "args", "env", "cwd"}
-            entry = MCPLocalServerConfig(**{k: v for k, v in entry.items() if k in sdk_keys})
+            entry = MCPStdioServerConfig(**{k: v for k, v in entry.items() if k in sdk_keys})
         elif entry.get("type") in ["http", "sse"]:
             # Strip non-SDK keys for remote configs too.
             sdk_keys = {"tools", "type", "timeout", "url", "headers"}
-            entry = MCPRemoteServerConfig(**{k: v for k, v in entry.items() if k in sdk_keys})
+            entry = MCPHTTPServerConfig(**{k: v for k, v in entry.items() if k in sdk_keys})
         else:
             # log error and skip invalid server configs
             logger.error(

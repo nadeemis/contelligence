@@ -406,13 +406,47 @@ async def get_session_logs(
 async def list_models(
     client_factory=Depends(get_client_factory),
 ) -> dict[str, Any]:
-    """Return the available models from the Copilot CLI."""
+    """Return the available models from the Copilot CLI.
+
+    Bypasses ``CopilotClient.list_models()`` because the SDK (0.1.0) raises
+    ``ValueError`` on models whose ``capabilities`` dict is missing
+    ``supports``/``limits`` (e.g. the ``"auto"`` model introduced in CLI
+    1.0.35). We fetch the raw ``models.list`` payload and parse each
+    entry individually, skipping malformed ones.
+    """
+    from copilot.client import ModelInfo
+
     try:
         client = client_factory.client
-        models = await client.list_models()
-        return {
-            "models": [m.to_dict() for m in models],
-        }
+        response = await client._client.request("models.list", {})
+        raw_models = response.get("models", [])
+
+        parsed: list[dict[str, Any]] = []
+        for raw in raw_models:
+            try:
+                parsed.append(ModelInfo.from_dict(raw).to_dict())
+            except (ValueError, AssertionError, KeyError, TypeError):
+                # Fallback: return a minimal shape so the UI still sees the model
+                model_id = raw.get("id")
+                if not model_id:
+                    continue
+                parsed.append({
+                    "id": model_id,
+                    "name": raw.get("name") or model_id,
+                    "capabilities": raw.get('capabilities'),
+                    "policy": raw.get('policy'),
+                    "billing": raw.get('billing'),
+                    "supportedReasoningEfforts": raw.get('supportedReasoningEfforts'),
+                    "defaultReasoningEffort": raw.get('defaultReasoningEffort'),
+                    "modelPickerCategory": raw.get('modelPickerCategory'),
+                    "modelPickerPriceCategory": raw.get('modelPickerPriceCategory'),
+                })
+        return {"models": parsed}
+        
+        # models = await client.list_models()
+        # return {
+        #     "models": [m.to_dict() for m in models],
+        # }
     except Exception as exc:
         logger.exception("Error listing models")
         raise HTTPException(status_code=500, detail=str(exc))
@@ -707,7 +741,7 @@ async def list_agents() -> dict[str, Any]:
                 "display_name": a.display_name,
                 "description": a.description,
                 "tools": a.tools,
-                "mcp_servers": a.mcp_servers,
+                "mcp_servers": [],  # Placeholder for future MCP server info
             }
             for a in CUSTOM_AGENTS.values()
         ]

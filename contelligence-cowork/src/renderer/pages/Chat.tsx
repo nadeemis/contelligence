@@ -15,8 +15,10 @@ import { ToolResultCard } from "@/components/chat/ToolResultCard";
 import { TurnBox } from "@/components/chat/TurnBox";
 import { ToolCallGroup } from "@/components/chat/ToolCallGroup";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { HistoryDropdown } from "@/components/chat/HistoryDropdown";
 import { ModelInfoCard } from "@/components/ModelInfoPopover";
 import { useAgentStream } from "@/hooks/useAgentStream";
+import { useInputHistory } from "@/hooks/useInputHistory";
 import { agentApi, preferencesApi } from "@/lib/api";
 import { processEventsIntoTimeline } from "@/lib/turn-processing";
 import { formatDate, formatDuration, statusIcon } from "@/lib/format";
@@ -41,10 +43,44 @@ const Chat = () => {
   const [summaryFullyExpanded, setSummaryFullyExpanded] = useState(false);
   const [instructError, setInstructError] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<number, boolean>>({ 0: true });
-  const [draftInput, setDraftInput] = useState("");
+  // Draft persistence across navigation via sessionStorage
+  const draftStorageKey = `session-draft-${urlSessionId ?? "new"}`;
+  const [draftInput, setDraftInput] = useState(() => {
+    try {
+      return sessionStorage.getItem(draftStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const currentDraftRef = useRef("");
   const prevIsStreamingRef = useRef(false);
+
+  // Save draft to sessionStorage on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (currentDraftRef.current) {
+          sessionStorage.setItem(draftStorageKey, currentDraftRef.current);
+        } else {
+          sessionStorage.removeItem(draftStorageKey);
+        }
+      } catch { /* ignore storage errors */ }
+    };
+  }, [draftStorageKey]);
   const [modelSelectOpen, setModelSelectOpen] = useState(false);
   const [hoveredModel, setHoveredModel] = useState<ModelInfo | null>(null);
+
+  // ── Input history (cross-session persistence + keyboard navigation) ──
+  const {
+    history: inputHistory,
+    isBrowsing: isBrowsingHistory,
+    browsingPosition,
+    addEntry,
+    clearHistory,
+    navigateUp,
+    navigateDown,
+    cancelNavigation,
+  } = useInputHistory();
 
   // ── Load sample prompts from user-editable file via IPC ──
   const [samplePrompts, setSamplePrompts] = useState<SamplePromptCategory[]>([]);
@@ -189,6 +225,13 @@ const Chat = () => {
   });
 
   const handleSend = (msg: string, mode?: "immediate" | "enqueue") => {
+    // Add to input history
+    addEntry(msg, sessionId ?? "new");
+
+    // Clear persisted draft since the message was sent
+    currentDraftRef.current = "";
+    try { sessionStorage.removeItem(draftStorageKey); } catch { /* ignore */ }
+
     if (!sessionId || !isStreaming) {
       // No active session or session is idle → start a new turn via instruct
       sendInstruction.mutate(msg);
@@ -631,12 +674,25 @@ const Chat = () => {
           isStreaming={isStreaming}
           externalValue={draftInput}
           onExternalValueConsumed={() => setDraftInput("")}
+          onValueChange={(v) => { currentDraftRef.current = v; }}
+          onNavigateUp={navigateUp}
+          onNavigateDown={navigateDown}
+          onCancelNavigation={cancelNavigation}
+          isBrowsingHistory={isBrowsingHistory}
+          browsingPosition={browsingPosition}
           placeholder={
             isStreaming
               ? "Steer the agent (Enter) · Queue follow-up (⌘/Ctrl+Enter)..."
               : isSessionFinished
                 ? "Send a follow-up instruction to resume this session..."
                 : "Type your instruction..."
+          }
+          bottomLeftSlot={
+            <HistoryDropdown
+              history={inputHistory}
+              onSelect={(text) => setDraftInput(text)}
+              onClear={clearHistory}
+            />
           }
         />
       </div>
