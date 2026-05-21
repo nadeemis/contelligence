@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
 import { UserMenu } from "@/components/UserMenu";
 import { HelpDialog } from "@/components/HelpDialog";
+import { UpdateBanner } from "@/components/UpdateBanner";
+import { UpdateIndicator } from "@/components/UpdateIndicator";
 
 const isElectron = typeof window !== "undefined" && !!window.electronAPI;
 const isMac = isElectron && navigator.platform.toLowerCase().includes("mac");
@@ -18,11 +20,13 @@ export function AppLayout() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
+          <UpdateBanner />
           <header className={`h-14 flex items-center justify-between border-b border-border px-4 bg-card/50 backdrop-blur-sm shrink-0 ${isMac ? "electron-drag-region pl-20" : ""}`}>
             <div className="flex items-center gap-2 electron-no-drag">
               <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             </div>
             <div className="flex items-center gap-2 electron-no-drag">
+              <UpdateIndicator />
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => setHelpOpen(true)}>
                 <Info className="h-4 w-4" />
               </Button>

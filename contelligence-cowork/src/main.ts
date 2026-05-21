@@ -12,6 +12,7 @@ import { startBackend, waitForBackend, stopBackend, getBackendPort, getContellig
 import { checkCopilotCli, checkAzureLogin, AzureLoginResult } from './cli-detection';
 import { resolveShellPath, getResolvedPath } from './shell-env';
 import { defaultSamplePrompts } from './default-sample-prompts';
+import { UpdateChecker, UpdateStatus } from './updater';
 
 // ─── User Identity ──────────────────────────────────────────────────────────
 
@@ -224,6 +225,69 @@ ipcMain.handle('open-sample-prompts-editor', () => {
   shell.openPath(samplePromptsPath);
 });
 
+// ─── Input History ──────────────────────────────────────────────────────────
+
+const inputHistoryPath = path.join(contelligenceHome, 'input-history.json');
+
+ipcMain.handle('get-input-history', () => {
+  try {
+    if (!fs.existsSync(inputHistoryPath)) return { version: 1, entries: [] };
+    const raw = fs.readFileSync(inputHistoryPath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    fileLog('ERROR', `Failed to read input-history.json: ${err}`);
+    return { version: 1, entries: [] };
+  }
+});
+
+ipcMain.handle('save-input-history', (_event, store: { version: number; entries: unknown[] }) => {
+  try {
+    const data = JSON.stringify(store, null, 2);
+    fs.writeFileSync(inputHistoryPath, data, { encoding: 'utf-8', mode: 0o600 });
+  } catch (err) {
+    fileLog('ERROR', `Failed to write input-history.json: ${err}`);
+  }
+});
+
+ipcMain.handle('clear-input-history', () => {
+  try {
+    if (fs.existsSync(inputHistoryPath)) fs.unlinkSync(inputHistoryPath);
+  } catch (err) {
+    fileLog('ERROR', `Failed to clear input-history.json: ${err}`);
+  }
+});
+
+// ─── Update Checker ─────────────────────────────────────────────────────────
+
+const UPDATE_REPO_OWNER = process.env.COWORK_UPDATE_OWNER ?? 'nadeemis';
+const UPDATE_REPO_NAME = process.env.COWORK_UPDATE_REPO ?? 'contelligence';
+
+const updateChecker = new UpdateChecker({
+  owner: UPDATE_REPO_OWNER,
+  repo: UPDATE_REPO_NAME,
+  currentVersion: app.getVersion(),
+});
+
+updateChecker.on('status', (status: UpdateStatus) => {
+  mainWindow?.webContents.send('update:status', status);
+});
+
+ipcMain.handle('update:get-status', () => updateChecker.getStatus());
+ipcMain.handle('update:check-now', () => updateChecker.checkNow());
+ipcMain.handle('update:open-release', () => {
+  const url = updateChecker.getStatus().releaseUrl;
+  // Only allow URLs from the configured upstream repo.
+  const safePrefix = `https://github.com/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/`;
+  if (url && url.startsWith(safePrefix)) {
+    void shell.openExternal(url);
+  } else {
+    void shell.openExternal(`https://github.com/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases/latest`);
+  }
+});
+ipcMain.handle('update:open-downloads', () => {
+  void shell.openExternal(`https://github.com/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases/latest`);
+});
+
 // ─── Application Menu ───────────────────────────────────────────────────────
 
 const isMac = process.platform === 'darwin';
@@ -281,6 +345,26 @@ const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       ...(isMac
         ? [{ type: 'separator' as const }, { role: 'front' as const }]
         : [{ role: 'close' as const }]),
+    ],
+  },
+  {
+    role: 'help',
+    submenu: [
+      {
+        label: 'Check for Updates\u2026',
+        click: async () => {
+          const status = await updateChecker.checkNow();
+          mainWindow?.webContents.send('update:status', status);
+        },
+      },
+      {
+        label: 'View Releases on GitHub',
+        click: () => {
+          void shell.openExternal(
+            `https://github.com/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases`,
+          );
+        },
+      },
     ],
   },
 ];
@@ -384,6 +468,10 @@ app.on('ready', async () => {
   // ── Step 4: Open main window ──
   splashProgress(95, 'Loading interface\u2026');
   createWindow();
+
+  // ── Step 5: Schedule background update checks ──
+  // Delayed inside UpdateChecker.start() so it doesn't compete with startup.
+  updateChecker.start();
 });
 
 app.on('window-all-closed', () => {
@@ -395,6 +483,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (!externalApiUrl) stopBackend();
+  updateChecker.stop();
   fileLog('INFO', 'App quitting');
   closeLogFile();
 });

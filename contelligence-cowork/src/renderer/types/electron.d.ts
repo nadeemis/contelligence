@@ -2,6 +2,42 @@
  * Type declarations for the Electron IPC bridge exposed via preload.
  * Available at `window.electronAPI` in the renderer process.
  */
+export type UpdateAssetPlatform = "mac" | "win" | "linux";
+
+export interface UpdateAsset {
+  platform: UpdateAssetPlatform;
+  url: string;
+  name: string;
+  size: number;
+}
+
+export type UpdateState =
+  | "idle"
+  | "checking"
+  | "available"
+  | "up-to-date"
+  | "error";
+
+export interface UpdateStatus {
+  state: UpdateState;
+  currentVersion: string;
+  latestVersion?: string;
+  releaseNotes?: string;
+  releaseUrl?: string;
+  publishedAt?: string;
+  assets?: UpdateAsset[];
+  checkedAt?: string;
+  error?: string;
+}
+
+export interface UpdateApi {
+  getStatus(): Promise<UpdateStatus>;
+  checkNow(): Promise<UpdateStatus>;
+  openRelease(): Promise<void>;
+  openDownloads(): Promise<void>;
+  onStatusChanged(callback: (status: UpdateStatus) => void): () => void;
+}
+
 export interface ElectronAPI {
   getApiBaseUrl(): Promise<string>;
   getAppInfo(): Promise<{
@@ -29,6 +65,10 @@ export interface ElectronAPI {
   onBackendRestarted(callback: () => void): () => void;
   getSamplePrompts(): Promise<Array<{ category: string; prompts: string[] }>>;
   openSamplePromptsEditor(): Promise<void>;
+  getInputHistory(): Promise<{ version: number; entries: Array<{ id: string; text: string; sessionId: string; timestamp: number }> }>;
+  saveInputHistory(store: { version: number; entries: Array<{ id: string; text: string; sessionId: string; timestamp: number }> }): Promise<void>;
+  clearInputHistory(): Promise<void>;
+  update: UpdateApi;
 }
 
 declare global {

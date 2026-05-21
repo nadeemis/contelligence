@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText, Sun, Moon, Laptop, Cpu } from "lucide-react";
+import { CheckCircle, XCircle, Activity, Monitor, Server, FolderOpen, Gauge, HardDrive, ScrollText, Sun, Moon, Laptop, Cpu, Download, RefreshCw, ExternalLink, History, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { healthApi, promptsApi, agentApi, preferencesApi } from "@/lib/api";
 import { PromptEditDialog } from "@/components/PromptEditDialog";
 import { useTheme, type Theme } from "@/components/ThemeProvider";
+import { useUpdateStatus } from "@/hooks/useUpdateStatus";
 import type { HealthStatus, EnvironmentInfo, PromptResponse } from "@/types";
 
 /* ── System Health Panel ─────────────────── */
@@ -59,12 +60,23 @@ function SystemHealthPanel() {
 
       {/* Copilot CLI */}
       {health?.copilot_cli && (
+        <>
         <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-          <span className="text-sm text-foreground">Copilot CLI</span>
+          <span className="text-sm text-foreground">Copilot CLI:</span>
           <Badge variant={health.copilot_cli.status === "available" ? "default" : "destructive"} className="capitalize">
-            {health.copilot_cli.status}
+            {(  health.copilot_cli.status === "available" ? "Available" : "Unavailable") +
+              (health.copilot_cli.cli_version ? ` (v${health.copilot_cli.cli_version})` : "")}
           </Badge>
         </div>
+        {health.copilot_cli.cli_config && (
+          <div className="rounded-lg bg-secondary/50 p-3">
+            <span className="text-sm text-foreground">Copilot CLI Config:</span>
+            <pre className="mt-1 max-h-48 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded-md bg-secondary/30 p-2 text-xs text-foreground">
+              {JSON.stringify(health.copilot_cli.cli_config, null, 2)}
+            </pre>
+          </div>
+        )}
+        </>
       )}
 
       {/* MCP Servers */}
@@ -459,9 +471,120 @@ const Settings = () => {
 
       {/* Desktop App Info — Electron only */}
       {window.electronAPI && <DesktopInfoCard />}
+      {window.electronAPI && <UpdatesCard />}
+      {window.electronAPI && <InputHistoryCard />}
     </div>
   );
 };
+
+function UpdatesCard() {
+  const { status, checkNow, openRelease, openDownloads } = useUpdateStatus();
+  const [checking, setChecking] = useState(false);
+
+  const handleCheck = async () => {
+    setChecking(true);
+    try {
+      const next = await checkNow();
+      if (next.state === "available") {
+        toast.success(`Update available — v${next.latestVersion}`);
+      } else if (next.state === "up-to-date") {
+        toast.success("You're on the latest version");
+      } else if (next.state === "error") {
+        toast.error(`Update check failed: ${next.error ?? "unknown error"}`);
+      }
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const lastChecked = status.checkedAt
+    ? new Date(status.checkedAt).toLocaleString()
+    : "Never";
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-foreground flex items-center gap-2">
+          <Download className="h-5 w-5 text-primary" />
+          Updates
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <InfoRow
+            label="Current Version"
+            value={status.currentVersion || "—"}
+            mono
+          />
+          <InfoRow
+            label="Latest Version"
+            value={status.latestVersion ? `v${status.latestVersion}` : "—"}
+            mono
+          />
+          <InfoRow label="Last Checked" value={lastChecked} />
+          <div className="rounded-lg bg-secondary/50 p-3">
+            <span className="text-xs text-muted-foreground">Status</span>
+            <div className="mt-1">
+              {status.state === "available" && (
+                <Badge className="bg-primary/15 text-primary border-primary/30">
+                  Update available
+                </Badge>
+              )}
+              {status.state === "up-to-date" && (
+                <Badge variant="secondary">Up to date</Badge>
+              )}
+              {status.state === "checking" && (
+                <Badge variant="secondary">Checking…</Badge>
+              )}
+              {status.state === "error" && (
+                <Badge variant="destructive">Error</Badge>
+              )}
+              {status.state === "idle" && (
+                <Badge variant="secondary">Idle</Badge>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {status.state === "error" && status.error && (
+          <p className="text-xs text-destructive">{status.error}</p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCheck}
+            disabled={checking || status.state === "checking"}
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 mr-1 ${
+                checking || status.state === "checking" ? "animate-spin" : ""
+              }`}
+            />
+            Check for updates
+          </Button>
+          {status.state === "available" && (
+            <>
+              <Button size="sm" onClick={() => openDownloads()}>
+                <Download className="h-3.5 w-3.5 mr-1" />
+                Download
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => openRelease()}
+              >
+                <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                Release notes
+              </Button>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function DesktopInfoCard() {
   const [info, setInfo] = useState<Record<string, string> | null>(null);
@@ -487,6 +610,55 @@ function DesktopInfoCard() {
               <p className="text-foreground font-mono mt-0.5">{val}</p>
             </div>
           ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InputHistoryCard() {
+  const [entryCount, setEntryCount] = useState(0);
+
+  useEffect(() => {
+    window.electronAPI?.getInputHistory?.().then((store) => {
+      if (store && Array.isArray(store.entries)) {
+        setEntryCount(store.entries.length);
+      }
+    });
+  }, []);
+
+  const handleClear = async () => {
+    await window.electronAPI?.clearInputHistory?.();
+    setEntryCount(0);
+    toast.success("Input history cleared");
+  };
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-foreground flex items-center gap-2">
+          <History className="h-5 w-5 text-primary" />
+          Input History
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Your chat input history is stored locally and used for Up/Down arrow navigation in the chat input.
+        </p>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-foreground">
+            {entryCount} {entryCount === 1 ? "entry" : "entries"} stored
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClear}
+            disabled={entryCount === 0}
+            className="text-destructive hover:bg-destructive/10 border-destructive/30"
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Clear History
+          </Button>
         </div>
       </CardContent>
     </Card>
