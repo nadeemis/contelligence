@@ -45,6 +45,20 @@ Contelligence is that bridge. It wraps the GitHub Copilot SDK in a desktop app t
 
 **Contelligence Cowork** is the desktop application — a fully self-contained, native experience that bundles the AI agent, backend, and UI into a single installable app. No cloud account, no Docker, no infrastructure setup. Download, install, and start processing content with AI immediately.
 
+### Quick install
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/nadeemis/contelligence/main/scripts/install-cowork.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/nadeemis/contelligence/main/scripts/install-cowork.ps1 | iex
+```
+
+Re-run the same command at any time to update to the latest release.
+
 ![Contelligence Cowork UI](assets/contelligence-cowork-ui.gif)
 
 ### What Contelligence Cowork Does

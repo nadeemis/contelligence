@@ -2,7 +2,15 @@
 import logging
 from typing import Any
 
-from copilot.session import MCPServerConfig, MCPStdioServerConfig, MCPHTTPServerConfig
+from copilot.session import MCPServerConfig
+
+# SDK >= 0.13 renamed MCPStdioServerConfig → MCPLocalServerConfig and
+# MCPHTTPServerConfig → MCPRemoteServerConfig.  Support both old and new.
+try:
+    from copilot.session import MCPStdioServerConfig, MCPHTTPServerConfig
+except ImportError:
+    from copilot.session import MCPLocalServerConfig as MCPStdioServerConfig  # type: ignore[assignment]
+    from copilot.session import MCPRemoteServerConfig as MCPHTTPServerConfig  # type: ignore[assignment]
 
 from app.utils.azure_token_provider import resolve_header_tokens
 

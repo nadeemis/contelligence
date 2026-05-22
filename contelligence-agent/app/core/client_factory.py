@@ -12,11 +12,53 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from copilot import CopilotClient, ExternalServerConfig, SubprocessConfig
+from copilot.client import PingResponse
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
+
+
+# ---------------------------------------------------------------------------
+# Monkey-patch: SDK >= 0.x returns ISO-8601 timestamp strings from the CLI
+# ping response instead of integer milliseconds.  The SDK's from_dict does
+# int(timestamp) which raises ValueError on an ISO string.  Patch it here
+# so the app starts cleanly until the SDK ships a fix.
+# ---------------------------------------------------------------------------
+
+_original_ping_from_dict = PingResponse.from_dict
+
+
+@staticmethod  # type: ignore[misc]
+def _patched_ping_from_dict(obj: Any) -> PingResponse:
+    """PingResponse.from_dict that tolerates ISO-8601 timestamp strings."""
+    assert isinstance(obj, dict)
+    message = obj.get("message")
+    timestamp = obj.get("timestamp")
+    protocol_version = obj.get("protocolVersion")
+
+    if message is None or timestamp is None or protocol_version is None:
+        raise ValueError(
+            f"Missing required fields in PingResponse: message={message}, "
+            f"timestamp={timestamp}, protocolVersion={protocol_version}"
+        )
+
+    # Handle ISO-8601 timestamp strings from newer CLI versions
+    if isinstance(timestamp, str):
+        try:
+            ts_int = int(timestamp)
+        except ValueError:
+            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            ts_int = int(dt.timestamp() * 1000)
+    else:
+        ts_int = int(timestamp)
+
+    return PingResponse(str(message), ts_int, int(protocol_version))
+
+
+PingResponse.from_dict = _patched_ping_from_dict  # type: ignore[assignment]
 
 
 class CopilotClientFactory:
