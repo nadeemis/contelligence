@@ -289,7 +289,6 @@ async def _do_startup(app: FastAPI, settings: AppSettings) -> None:  # noqa: ANN
 
     base_options: dict = {
         "log_level": settings.LOG_LEVEL.lower() if settings.LOG_LEVEL else "info",
-        "auto_start": True,
         "cli_cwd": os.path.expanduser(settings.CLI_WORKING_DIRECTORY) if settings.CLI_WORKING_DIRECTORY else None,
         "cli_args": settings.COPILOT_CLI_ARGS or [],
     }

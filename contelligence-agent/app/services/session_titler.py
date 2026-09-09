@@ -181,7 +181,7 @@ class SessionTitler:
             await done.wait()
         finally:
             try:
-                await sdk_session.destroy()
+                await sdk_session.disconnect()
             except Exception:  # noqa: BLE001
                 logger.debug(
                     "SessionTitler: failed to destroy ephemeral session",

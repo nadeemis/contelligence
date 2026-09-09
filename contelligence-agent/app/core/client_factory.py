@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from copilot import CopilotClient, ExternalServerConfig, SubprocessConfig
+from copilot import CopilotClient, RuntimeConnection
 from copilot.client import PingResponse
 
 logger = logging.getLogger(f"contelligence-agent.{__name__}")
@@ -123,22 +123,18 @@ class CopilotClientFactory:
 
         if opts.get("cli_url") in [None, ""]:
             client = CopilotClient(
-                config=SubprocessConfig(
-                    cli_path=opts.get("cli_path"),
-                    cli_args=opts.get("cli_args", []),
-                    log_level=opts.get("log_level", "info"),
-                    cwd=opts.get("cli_cwd"),
-                    github_token=opts.get("github_token"),
-                    use_logged_in_user=opts.get("use_logged_in_user"),
+                connection=RuntimeConnection.for_stdio(
+                    path=opts.get("cli_path"),
+                    args=opts.get("cli_args", []),
                 ),
-                auto_start=opts.get("auto_start", True),
+                working_directory=opts.get("cli_cwd"),
+                log_level=opts.get("log_level", "info"),
+                github_token=opts.get("github_token"),
+                use_logged_in_user=opts.get("use_logged_in_user"),
             )
         else:
             client = CopilotClient(
-                config=ExternalServerConfig(
-                    url=opts["cli_url"]
-                ),
-                auto_start=opts.get("auto_start", True),
+                connection=RuntimeConnection.for_uri(opts["cli_url"]),
             )
         
         return client

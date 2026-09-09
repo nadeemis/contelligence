@@ -18,7 +18,6 @@ from typing import Any
 
 from copilot import CopilotClient, CopilotSession as SDKSession
 from copilot.session import SessionEvent, Tool, ToolInvocation, ToolResult, PermissionHandler, PermissionRequest, PermissionRequestResult
-from copilot.generated.session_events import PermissionRequestKind
 
 from app.core.client_factory import CopilotClientFactory
 from app.core.tool_registry import ToolDefinition, ToolRegistry
@@ -590,7 +589,7 @@ class SessionFactory:
             
             logger.debug("Permission request received in session %s: kind=%s", session_id, request.kind)
             
-            if request.kind == PermissionRequestKind.URL:
+            if request.kind == "url":
                 url = request.url or ""
                 if url:
                     logger.info("MCP auth: opening URL in browser: %s", url)
@@ -738,7 +737,7 @@ class SessionFactory:
                                                                     mcp_servers=effective_mcp_servers,
                                                                     custom_agents=custom_agents,
                                                                     agent=None, # TODO: support custom agents at the session level
-                                                                    config_dir=None, # TODO: support session-level config dir for custom agent configs and SDK plugins
+                                                                    config_directory=None, # TODO: support session-level config dir for custom agent configs and SDK plugins
                                                                     skill_directories=skill_directories,
                                                                     disabled_skills=disabled_skills,
                                                                     infinite_sessions={"enabled": True}, # TODO: support infinite sessions for long-running agents that need to survive restarts
@@ -763,7 +762,7 @@ class SessionFactory:
                                                                     mcp_servers=effective_mcp_servers,
                                                                     custom_agents=custom_agents,
                                                                     agent=None, # TODO: support custom agents at the session level for resumed sessions
-                                                                    config_dir=None, # TODO: support session-level config dir for custom agent configs and SDK plugins for resumed sessions
+                                                                    config_directory=None, # TODO: support session-level config dir for custom agent configs and SDK plugins for resumed sessions
                                                                     skill_directories=skill_directories,
                                                                     disabled_skills=disabled_skills,
                                                                     infinite_sessions={"enabled": True}, # TODO: support infinite sessions for long-running agents that need to survive restarts for resumed sessions

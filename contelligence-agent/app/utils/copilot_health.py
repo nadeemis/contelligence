@@ -207,7 +207,7 @@ async def verify_copilot_client(
     finally:
         if session is not None:
             try:
-                await session.destroy()
+                await session.disconnect()
             except Exception:
                 pass
 

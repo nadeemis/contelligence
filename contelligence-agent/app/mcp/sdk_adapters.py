@@ -45,7 +45,7 @@ def _needs_auth_proxy_timeout(entry: dict[str, Any]) -> bool:
 
 async def mcp_config_to_sdk_config(
     mcp_servers: dict[str, Any],
-) -> list[MCPServerConfig]:
+) -> dict[str, MCPServerConfig]:
     """Ensure each MCP server config is SDK-ready.
 
     The Copilot SDK requires a ``tools`` field on each server entry
@@ -62,7 +62,7 @@ async def mcp_config_to_sdk_config(
     time to resolve OAuth challenges, a generous SDK ``timeout`` is set
     automatically unless the user already specified one.
     """
-    normalized: list[MCPServerConfig] = []
+    normalized: dict[str, MCPServerConfig] = {}
     for name, cfg in mcp_servers.items():
         entry = dict(cfg)  # shallow copy — don't mutate the original
         entry = {**entry, **{"tools": ["*"]}} # default tools if missing
@@ -99,5 +99,5 @@ async def mcp_config_to_sdk_config(
             )
             continue
         
-        normalized.append(entry)
+        normalized[name] = entry
     return normalized
